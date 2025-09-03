@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "622159023802",
+    "project_id": "atlho-app",
+    "storage_bucket": "atlho-app.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:622159023802:android:c89353f23f8220e0a9fc83",
+        "android_client_info": {
+          "package_name": "com.example.athlo_app_novo"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyDYSRlT9wko6O3vizMaenMoRuAreak4qjA"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}
