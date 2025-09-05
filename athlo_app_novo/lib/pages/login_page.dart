@@ -1,4 +1,7 @@
 import 'package:flutter/material.dart';
+import 'package:firebase_auth/firebase_auth.dart';
+import 'package:google_sign_in/google_sign_in.dart';
+
 import 'home_feed_page.dart';
 import 'register_page.dart';
 
@@ -40,6 +43,92 @@ class _LoginPageState extends State<LoginPage> {
     }
   }
 
+  Future<void> _loginWithGoogle() async {
+    try {
+      final GoogleSignInAccount? googleUser = await GoogleSignIn().signIn();
+
+      if (googleUser == null) return; // Usuário cancelou o login
+
+      final GoogleSignInAuthentication googleAuth =
+          await googleUser.authentication;
+
+      final credential = GoogleAuthProvider.credential(
+        accessToken: googleAuth.accessToken,
+        idToken: googleAuth.idToken,
+      );
+
+      await FirebaseAuth.instance.signInWithCredential(credential);
+
+      Navigator.pushReplacement(
+        context,
+        MaterialPageRoute(builder: (_) => const HomeFeedPage()),
+      );
+    } catch (e) {
+      showDialog(
+        context: context,
+        builder: (_) => AlertDialog(
+          title: const Text("Erro"),
+          content: Text("Falha no login com Google: $e"),
+          actions: [
+            TextButton(
+                onPressed: () => Navigator.pop(context),
+                child: const Text("OK"))
+          ],
+        ),
+      );
+    }
+  }
+
+  Future<void> _resetPassword() async {
+    final email = _emailController.text.trim();
+
+    if (email.isEmpty) {
+      showDialog(
+        context: context,
+        builder: (_) => AlertDialog(
+          title: const Text("Erro"),
+          content: const Text("Digite seu email para redefinir a senha."),
+          actions: [
+            TextButton(
+                onPressed: () => Navigator.pop(context),
+                child: const Text("OK"))
+          ],
+        ),
+      );
+      return;
+    }
+
+    try {
+      await FirebaseAuth.instance.sendPasswordResetEmail(email: email);
+
+      showDialog(
+        context: context,
+        builder: (_) => AlertDialog(
+          title: const Text("Sucesso"),
+          content: Text("Um e-mail de redefinição foi enviado para $email."),
+          actions: [
+            TextButton(
+                onPressed: () => Navigator.pop(context),
+                child: const Text("OK"))
+          ],
+        ),
+      );
+    } catch (e) {
+      showDialog(
+        context: context,
+        builder: (_) => AlertDialog(
+          title: const Text("Erro"),
+          content: Text("Falha ao enviar e-mail: $e"),
+          actions: [
+            TextButton(
+                onPressed: () => Navigator.pop(context),
+                child: const Text("OK"))
+          ],
+        ),
+      );
+    }
+  }
+
   void _goRegister() {
     Navigator.pushNamed(context, '/register');
   }
@@ -47,14 +136,14 @@ class _LoginPageState extends State<LoginPage> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: const Color(0xFF4D6B6D), // fundo verde escuro
+      backgroundColor: const Color(0xFF4D6B6D),
       body: SafeArea(
-        child: SingleChildScrollView( // 🔽 resolve o overflow
+        child: SingleChildScrollView(
           child: Column(
             children: [
-              // --- PARTE DE CIMA (formulário)
               Padding(
-                padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 16),
+                padding:
+                    const EdgeInsets.symmetric(horizontal: 24, vertical: 16),
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
@@ -107,9 +196,7 @@ class _LoginPageState extends State<LoginPage> {
                     Align(
                       alignment: Alignment.centerRight,
                       child: TextButton(
-                        onPressed: () {
-                          // aqui você pode implementar a recuperação de senha
-                        },
+                        onPressed: _resetPassword, // ✅ corrigido
                         child: const Text(
                           "Esqueceu a senha?",
                           style: TextStyle(color: Colors.white),
@@ -160,9 +247,7 @@ class _LoginPageState extends State<LoginPage> {
                         ),
                         icon: const Icon(Icons.g_mobiledata,
                             size: 28, color: Colors.black),
-                        onPressed: () {
-                          // implementar login Google futuramente
-                        },
+                        onPressed: _loginWithGoogle,
                         label: const Text(
                           "Entrar com Google",
                           style: TextStyle(color: Colors.black, fontSize: 16),
@@ -171,7 +256,6 @@ class _LoginPageState extends State<LoginPage> {
                     ),
 
                     const SizedBox(height: 20),
-
                     Center(
                       child: TextButton(
                         onPressed: _goRegister,
@@ -185,11 +269,11 @@ class _LoginPageState extends State<LoginPage> {
                 ),
               ),
 
-              // --- PARTE DE BAIXO (fundo arredondado com imagem)
+              // --- PARTE DE BAIXO
               Container(
                 width: double.infinity,
                 decoration: const BoxDecoration(
-                  color: Color(0xFF2F3E3E), // cor do fundo por trás da imagem
+                  color: Color(0xFF2F3E3E),
                   borderRadius: BorderRadius.only(
                     topLeft: Radius.circular(80),
                     topRight: Radius.circular(80),
