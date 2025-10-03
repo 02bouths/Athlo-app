@@ -17,8 +17,8 @@ class _HomeFeedPageState extends State<HomeFeedPage> {
 
   final List<String> videoUrls = const [
     "https://youtube.com/shorts/b3OeMC5iKb8?si=FL5swtMhWM869MGn", // jiu-jitsu
-    "https://youtube.com/shorts/vc2wRHYr9cc?si=VC8ayj1DkOPQZV-z", // vídeo 2 -> Kung Fu
-    "https://youtube.com/shorts/shNivqqCo4Y?si=9dEihEYiVre7tMcr", // vídeo 3 -> Muay Thai (clique no meio)
+    "https://youtube.com/shorts/vc2wRHYr9cc?si=VC8ayj1DkOPQZV-z", // Kung Fu
+    "https://youtube.com/shorts/shNivqqCo4Y?si=9dEihEYiVre7tMcr", // Muay Thai
   ];
 
   late final List<Widget> _pages;
@@ -58,7 +58,7 @@ class _HomeFeedPageState extends State<HomeFeedPage> {
 
           Widget videoWidget = WebViewWidget(controller: controller);
 
-          // Botão invisível apenas no vídeo 1 (menor tamanho) -> Jiu-Jitsu (mantido)
+          // Vídeo 1 -> Jiu-Jitsu (botão invisível central)
           if (index == 0) {
             videoWidget = Stack(
               children: [
@@ -91,7 +91,7 @@ class _HomeFeedPageState extends State<HomeFeedPage> {
             );
           }
 
-          // NOVO: Vídeo 2 -> redireciona para Kung Fu (pode clicar em qualquer lugar do vídeo)
+          // Vídeo 2 -> Kung Fu (tela toda clicável)
           if (index == 1) {
             videoWidget = Stack(
               children: [
@@ -121,7 +121,7 @@ class _HomeFeedPageState extends State<HomeFeedPage> {
             );
           }
 
-          // NOVO: Vídeo 3 -> redireciona para Muay Thai (apertar no MEIO do vídeo)
+          // Vídeo 3 -> Muay Thai (apenas clique no centro)
           if (index == 2) {
             videoWidget = Stack(
               children: [
