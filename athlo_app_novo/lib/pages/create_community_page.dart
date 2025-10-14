@@ -1,5 +1,9 @@
+import 'dart:io';
 import 'package:flutter/material.dart';
-import 'search_page.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:image_picker/image_picker.dart';
+import 'package:firebase_storage/firebase_storage.dart';
+import 'package:firebase_auth/firebase_auth.dart';
 
 class CreateCommunityPage extends StatefulWidget {
   const CreateCommunityPage({super.key});
@@ -13,78 +17,151 @@ class _CreateCommunityPageState extends State<CreateCommunityPage> {
   final TextEditingController _tipoEsporteController = TextEditingController();
   final TextEditingController _enderecoController = TextEditingController();
   final TextEditingController _descricaoController = TextEditingController();
-  final TextEditingController _imagemController = TextEditingController();
 
-  String? imagemSelecionada;
-  final List<String> imagensPreDefinidas = [
-    "https://primeiroround.com.br/wp-content/uploads/2024/10/poatan2.jpg",
-    "https://i.ytimg.com/vi/yiDDwBHLolo/hqdefault.jpg",
-    "https://fator01.wordpress.com/wp-content/uploads/2011/04/brucelee.jpg?w=400",
-    "https://fotos.perfil.com/2020/11/27/la-camara-36-de-shaolin-1087690.jpg"
-  ];
+  File? imagemPrincipal;
+  final List<File> imagensExtras = [];
+  bool _isUploading = false;
 
-  void _criarComunidade() {
-    if (_nomeController.text.trim().isEmpty || _descricaoController.text.trim().isEmpty) {
-      showDialog(
-        context: context,
-        builder: (_) => AlertDialog(
-          title: const Text("Campos obrigatórios"),
-          content: const Text("Por favor, preencha o nome e a descrição da comunidade."),
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.pop(context),
-              child: const Text("OK"),
-            ),
-          ],
-        ),
+  // Selecionar imagem principal
+  Future<void> _selecionarImagemPrincipal() async {
+    try {
+      final picker = ImagePicker();
+      final pickedFile = await picker.pickImage(source: ImageSource.gallery, imageQuality: 85);
+      if (pickedFile != null) {
+        setState(() => imagemPrincipal = File(pickedFile.path));
+      }
+    } catch (e) {
+      debugPrint('Erro ao selecionar imagem principal: $e');
+    }
+  }
+
+  // Selecionar até 3 imagens extras
+  Future<void> _selecionarImagensExtras() async {
+    try {
+      final picker = ImagePicker();
+      final pickedFiles = await picker.pickMultiImage(imageQuality: 85);
+
+      if (pickedFiles.isNotEmpty) {
+        setState(() {
+          imagensExtras.clear();
+          imagensExtras.addAll(
+            pickedFiles.take(3).map((f) => File(f.path)),
+          );
+        });
+      }
+    } catch (e) {
+      debugPrint('Erro ao selecionar imagens extras: $e');
+    }
+  }
+
+  // Upload para Firebase Storage
+  Future<String?> _uploadImagemParaStorage(File imagem) async {
+    try {
+      final user = FirebaseAuth.instance.currentUser;
+      if (user == null) throw Exception('Usuário não autenticado.');
+
+      final storageRef = FirebaseStorage.instance
+          .ref()
+          .child('community_images/${user.uid}_${DateTime.now().millisecondsSinceEpoch}.jpg');
+
+      final uploadTask = storageRef.putFile(imagem);
+      final snapshot = await uploadTask;
+      final url = await snapshot.ref.getDownloadURL();
+
+      debugPrint('✅ Imagem enviada: $url');
+      return url;
+    } catch (e) {
+      debugPrint('❌ Erro no upload: $e');
+      return null;
+    }
+  }
+
+  Future<void> _criarComunidade() async {
+    final nome = _nomeController.text.trim();
+    final descricao = _descricaoController.text.trim();
+
+    if (nome.isEmpty || descricao.isEmpty) {
+      _showDialog("Campos obrigatórios", "Preencha o nome e a descrição da comunidade.");
+      return;
+    }
+
+    if (imagemPrincipal == null) {
+      _showDialog("Imagem principal", "Selecione a foto principal da comunidade.");
+      return;
+    }
+
+    if (imagensExtras.length < 3) {
+      _showDialog("Fotos adicionais", "Adicione pelo menos 3 fotos para a comunidade.");
+      return;
+    }
+
+    final user = FirebaseAuth.instance.currentUser;
+    if (user == null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text("Você precisa estar logado para criar uma comunidade.")),
       );
       return;
     }
 
-    String imagemFinal = imagemSelecionada ?? _imagemController.text.trim();
-    if (imagemFinal.isEmpty) {
-      imagemFinal = "https://cdn-icons-png.flaticon.com/512/5110/5110286.png";
+    setState(() => _isUploading = true);
+
+    try {
+      // Upload da imagem principal
+      final imagemPrincipalUrl = await _uploadImagemParaStorage(imagemPrincipal!);
+
+      // Upload das 3 imagens extras
+      List<String> imagensExtrasUrls = [];
+      for (final img in imagensExtras) {
+        final url = await _uploadImagemParaStorage(img);
+        if (url != null) imagensExtrasUrls.add(url);
+      }
+
+      // Salvar no Firestore
+      await FirebaseFirestore.instance.collection('communities').add({
+        "nome": nome,
+        "tipo": _tipoEsporteController.text.trim(),
+        "endereco": _enderecoController.text.trim(),
+        "descricao": descricao,
+        "imagem": imagemPrincipalUrl ?? "",
+        "imagensExtras": imagensExtrasUrls,
+        "criadoEm": FieldValue.serverTimestamp(),
+        "criadoPor": user.uid,
+      });
+
+      setState(() => _isUploading = false);
+
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text("Comunidade criada com sucesso!")),
+        );
+        Navigator.pop(context);
+      }
+    } catch (e) {
+      debugPrint('❌ Erro ao criar comunidade: $e');
+      setState(() => _isUploading = false);
+      _showDialog("Erro", "Falha ao criar comunidade: $e");
     }
+  }
 
-    SearchPage.comunidadesGlobais.add({
-      "nome": _nomeController.text.trim(),
-      "tipo": _tipoEsporteController.text.trim(),
-      "endereco": _enderecoController.text.trim(),
-      "imagem": imagemFinal,
-      "descricao": _descricaoController.text.trim(),
-      "imagemDetalhes": imagemFinal,
-    });
-
+  void _showDialog(String titulo, String mensagem) {
     showDialog(
       context: context,
       builder: (_) => AlertDialog(
-        title: const Text("Sucesso"),
-        content: const Text("Cadastro da comunidade concluído!"),
+        title: Text(titulo),
+        content: Text(mensagem),
         actions: [
-          TextButton(
-            onPressed: () {
-              Navigator.pop(context);
-              Navigator.pop(context);
-            },
-            child: const Text("OK"),
-          ),
+          TextButton(onPressed: () => Navigator.pop(context), child: const Text("OK")),
         ],
       ),
     );
   }
 
   Widget _buildSectionTitle(String text) {
-    return Align(
-      alignment: Alignment.centerLeft,
-      child: Padding(
-        padding: const EdgeInsets.only(bottom: 4, top: 16),
-        child: Text(
-          text,
-          style: const TextStyle(
-            fontWeight: FontWeight.bold,
-            color: Colors.black,
-          ),
-        ),
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 4, top: 16),
+      child: Text(
+        text,
+        style: const TextStyle(fontWeight: FontWeight.bold, color: Colors.black),
       ),
     );
   }
@@ -99,135 +176,150 @@ class _CreateCommunityPageState extends State<CreateCommunityPage> {
         iconTheme: const IconThemeData(color: Colors.black),
         elevation: 0,
       ),
-      body: SingleChildScrollView(
-        padding: const EdgeInsets.all(16),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            _buildSectionTitle("Nome da comunidade:"),
-            TextField(
-              controller: _nomeController,
-              decoration: const InputDecoration(
-                hintText: "Comunidade de ...",
-                border: OutlineInputBorder(),
-                hintStyle: TextStyle(color: Colors.black54),
-                filled: true,
-                fillColor: Colors.white,
-              ),
-              style: const TextStyle(color: Colors.black),
-            ),
+      body: Stack(
+        children: [
+          SingleChildScrollView(
+            padding: const EdgeInsets.all(16),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                _buildSectionTitle("Nome da comunidade:"),
+                TextField(
+                  controller: _nomeController,
+                  decoration: const InputDecoration(
+                    hintText: "Comunidade de ...",
+                    border: OutlineInputBorder(),
+                    filled: true,
+                    fillColor: Colors.white,
+                  ),
+                ),
 
-            _buildSectionTitle("Qual o tipo de esporte:"),
-            TextField(
-              controller: _tipoEsporteController,
-              decoration: const InputDecoration(
-                hintText: "Escreva seu esporte aqui",
-                border: OutlineInputBorder(),
-                hintStyle: TextStyle(color: Colors.black54),
-                filled: true,
-                fillColor: Colors.white,
-              ),
-              style: const TextStyle(color: Colors.black),
-            ),
+                _buildSectionTitle("Tipo de esporte:"),
+                TextField(
+                  controller: _tipoEsporteController,
+                  decoration: const InputDecoration(
+                    hintText: "Ex: Futebol, Vôlei, Basquete...",
+                    border: OutlineInputBorder(),
+                    filled: true,
+                    fillColor: Colors.white,
+                  ),
+                ),
 
-            _buildSectionTitle("Escreva o principal endereço de prática:"),
-            TextField(
-              controller: _enderecoController,
-              decoration: const InputDecoration(
-                hintText: "Ex: Rua Exemplo, 123 - Bairro, Cidade",
-                border: OutlineInputBorder(),
-                hintStyle: TextStyle(color: Colors.black54),
-                filled: true,
-                fillColor: Colors.white,
-              ),
-              style: const TextStyle(color: Colors.black),
-            ),
+                _buildSectionTitle("Endereço principal de prática:"),
+                TextField(
+                  controller: _enderecoController,
+                  decoration: const InputDecoration(
+                    hintText: "Rua Exemplo, 123 - Bairro, Cidade",
+                    border: OutlineInputBorder(),
+                    filled: true,
+                    fillColor: Colors.white,
+                  ),
+                ),
 
-            _buildSectionTitle("Adicione uma descrição para sua comunidade:"),
-            TextField(
-              controller: _descricaoController,
-              maxLines: 2,
-              decoration: const InputDecoration(
-                hintText: "Escreva sua descrição aqui",
-                border: OutlineInputBorder(),
-                hintStyle: TextStyle(color: Colors.black54),
-                filled: true,
-                fillColor: Colors.white,
-              ),
-              style: const TextStyle(color: Colors.black),
-            ),
+                _buildSectionTitle("Descrição da comunidade:"),
+                TextField(
+                  controller: _descricaoController,
+                  maxLines: 2,
+                  decoration: const InputDecoration(
+                    hintText: "Escreva sua descrição aqui",
+                    border: OutlineInputBorder(),
+                    filled: true,
+                    fillColor: Colors.white,
+                  ),
+                ),
 
-            _buildSectionTitle("Selecione a foto da comunidade"),
-            Wrap(
-              spacing: 8,
-              runSpacing: 8,
-              children: imagensPreDefinidas.map((url) {
-                return GestureDetector(
-                  onTap: () {
-                    setState(() {
-                      imagemSelecionada = url;
-                    });
-                  },
+                _buildSectionTitle("Foto principal da comunidade:"),
+                const SizedBox(height: 8),
+                GestureDetector(
+                  onTap: _selecionarImagemPrincipal,
                   child: Container(
+                    height: 120,
+                    width: 120,
                     decoration: BoxDecoration(
-                      border: Border.all(
-                        color: imagemSelecionada == url ? Colors.amber : Colors.black54,
-                        width: 3,
-                      ),
+                      border: Border.all(color: Colors.black54),
                       borderRadius: BorderRadius.circular(8),
+                      color: Colors.white,
                     ),
-                    child: ClipRRect(
-                      borderRadius: BorderRadius.circular(8),
-                      child: Image.network(url, width: 100, height: 100, fit: BoxFit.cover),
-                    ),
-                  ),
-                );
-              }).toList(),
-            ),
-            const SizedBox(height: 4),
-            const Text(
-              "(Essa foto não poderá ser alterada posteriormente)",
-              style: TextStyle(fontSize: 12, color: Colors.black54),
-            ),
-
-            _buildSectionTitle("Selecione as fotos de apresentação da comunidade"),
-            GestureDetector(
-              onTap: () {},
-              child: Container(
-                height: 100,
-                width: 100,
-                decoration: BoxDecoration(
-                  border: Border.all(color: Colors.black54),
-                ),
-                child: const Icon(Icons.add, size: 40, color: Colors.black54),
-              ),
-            ),
-            const SizedBox(height: 4),
-            const Text(
-              "(Essa foto não poderá ser alterada posteriormente)",
-              style: TextStyle(fontSize: 12, color: Colors.black54),
-            ),
-
-            const SizedBox(height: 20),
-            SizedBox(
-              width: double.infinity,
-              child: ElevatedButton(
-                onPressed: _criarComunidade,
-                style: ElevatedButton.styleFrom(
-                  backgroundColor: const Color(0xFF5A4632),
-                  padding: const EdgeInsets.symmetric(vertical: 14),
-                  shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(8),
+                    child: imagemPrincipal == null
+                        ? const Icon(Icons.add_a_photo, size: 40, color: Colors.black54)
+                        : ClipRRect(
+                            borderRadius: BorderRadius.circular(8),
+                            child: Image.file(imagemPrincipal!, fit: BoxFit.cover),
+                          ),
                   ),
                 ),
-                child: const Text(
-                  "Criar comunidade",
-                  style: TextStyle(fontSize: 16, color: Colors.white),
+
+                _buildSectionTitle("Adicione 3 fotos da comunidade:"),
+                const SizedBox(height: 8),
+                GestureDetector(
+                  onTap: _selecionarImagensExtras,
+                  child: Container(
+                    height: 100,
+                    decoration: BoxDecoration(
+                      border: Border.all(color: Colors.black54),
+                      borderRadius: BorderRadius.circular(8),
+                    ),
+                    child: imagensExtras.isEmpty
+                        ? const Center(
+                            child: Text(
+                              "Toque para selecionar até 3 imagens",
+                              style: TextStyle(color: Colors.black54),
+                            ),
+                          )
+                        : ListView.separated(
+                            scrollDirection: Axis.horizontal,
+                            padding: const EdgeInsets.all(8),
+                            itemCount: imagensExtras.length,
+                            separatorBuilder: (_, __) => const SizedBox(width: 8),
+                            itemBuilder: (_, index) {
+                              return ClipRRect(
+                                borderRadius: BorderRadius.circular(8),
+                                child: Image.file(imagensExtras[index],
+                                    width: 100, height: 100, fit: BoxFit.cover),
+                              );
+                            },
+                          ),
+                  ),
+                ),
+
+                const SizedBox(height: 24),
+                SizedBox(
+                  width: double.infinity,
+                  child: ElevatedButton(
+                    onPressed: _isUploading ? null : _criarComunidade,
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: const Color(0xFF5A4632),
+                      padding: const EdgeInsets.symmetric(vertical: 14),
+                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+                    ),
+                    child: _isUploading
+                        ? const SizedBox(
+                            height: 18,
+                            width: 18,
+                            child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2),
+                          )
+                        : const Text("Criar comunidade", style: TextStyle(color: Colors.white)),
+                  ),
+                ),
+              ],
+            ),
+          ),
+
+          if (_isUploading)
+            Container(
+              color: Colors.black54,
+              child: const Center(
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    CircularProgressIndicator(color: Colors.white),
+                    SizedBox(height: 16),
+                    Text("Enviando imagens...", style: TextStyle(color: Colors.white)),
+                  ],
                 ),
               ),
             ),
-          ],
-        ),
+        ],
       ),
     );
   }

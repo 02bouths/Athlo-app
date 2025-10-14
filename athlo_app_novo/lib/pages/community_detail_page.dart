@@ -2,12 +2,11 @@ import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:url_launcher/url_launcher.dart';
 
-// 👉 importe sua página de chat
+// 👉 páginas internas
 import 'chat_page.dart';
 
 class CommunityDetailPage extends StatefulWidget {
   final String? communityId;
-
   final String? nome;
   final String? imagem;
   final String? descricao;
@@ -37,15 +36,12 @@ class _CommunityDetailPageState extends State<CommunityDetailPage> {
 
   void _toggleJoinLocal() {
     setState(() => _joined = !_joined);
-
     if (_joined) {
-      // 🚀 redirecionar para o chat da comunidade
       Navigator.push(
         context,
         MaterialPageRoute(
-          builder: (context) => ChatPage(
-            nomeComunidade: widget.nome ?? 'Comunidade', // ← corrigido
-          ),
+          builder: (context) =>
+              ChatPage(nomeComunidade: widget.nome ?? 'Comunidade'),
         ),
       );
     }
@@ -62,7 +58,6 @@ class _CommunityDetailPageState extends State<CommunityDetailPage> {
     }
   }
 
-  // ---- utils ----
   int _parseMemberCount(dynamic value) {
     if (value == null) return 0;
     if (value is int) return value;
@@ -89,7 +84,6 @@ class _CommunityDetailPageState extends State<CommunityDetailPage> {
     return [];
   }
 
-  // ---- UI ----
   Widget _buildHeader(String nome, String avatarUrl, int memberCount) {
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 16),
@@ -146,9 +140,8 @@ class _CommunityDetailPageState extends State<CommunityDetailPage> {
             text,
             textAlign: TextAlign.justify,
             maxLines: _showFullDescription ? null : collapsedLines,
-            overflow: _showFullDescription
-                ? TextOverflow.visible
-                : TextOverflow.ellipsis,
+            overflow:
+                _showFullDescription ? TextOverflow.visible : TextOverflow.ellipsis,
             style: const TextStyle(
               fontSize: 12,
               fontWeight: FontWeight.w700,
@@ -158,8 +151,7 @@ class _CommunityDetailPageState extends State<CommunityDetailPage> {
           ),
           const SizedBox(height: 4),
           GestureDetector(
-            onTap: () =>
-                setState(() => _showFullDescription = !_showFullDescription),
+            onTap: () => setState(() => _showFullDescription = !_showFullDescription),
             child: Text(
               _showFullDescription ? 'Mostrar menos' : 'Ler mais',
               style: TextStyle(
@@ -173,48 +165,42 @@ class _CommunityDetailPageState extends State<CommunityDetailPage> {
     );
   }
 
-  Widget _buildImagesLayout(List<String> imagens, String fallback) {
-    final main = imagens.isNotEmpty ? imagens.first : fallback;
-    final left = imagens.length > 1 ? imagens[1] : null;
-    final right = imagens.length > 2 ? imagens[2] : null;
+  /// 🔹 Novo layout de imagens com carrossel horizontal
+  Widget _buildImagesCarousel(List<String> imagens, String fallback) {
+    final List<String> allImages =
+        imagens.isNotEmpty ? imagens : [fallback];
 
     return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 20, horizontal: 16),
-      child: Row(
-        mainAxisAlignment: MainAxisAlignment.center,
-        children: [
-          if (left != null)
-            ClipRRect(
-              borderRadius: BorderRadius.circular(11),
-              child: Image.network(
-                left,
-                width: 110,
-                height: 245,
-                fit: BoxFit.cover,
+      padding: const EdgeInsets.symmetric(vertical: 20),
+      child: SizedBox(
+        height: 280,
+        child: PageView.builder(
+          itemCount: allImages.length,
+          controller: PageController(viewportFraction: 0.85),
+          itemBuilder: (context, index) {
+            final img = allImages[index];
+            return Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 8),
+              child: ClipRRect(
+                borderRadius: BorderRadius.circular(12),
+                child: Image.network(
+                  img,
+                  fit: BoxFit.cover,
+                  loadingBuilder: (context, child, progress) {
+                    if (progress == null) return child;
+                    return const Center(
+                      child: CircularProgressIndicator(color: Colors.grey),
+                    );
+                  },
+                  errorBuilder: (_, __, ___) => Container(
+                    color: Colors.grey.shade300,
+                    child: const Icon(Icons.broken_image, size: 50),
+                  ),
+                ),
               ),
-            ),
-          const SizedBox(width: 12),
-          ClipRRect(
-            borderRadius: BorderRadius.circular(11),
-            child: Image.network(
-              main,
-              width: 354,
-              height: 474,
-              fit: BoxFit.cover,
-            ),
-          ),
-          const SizedBox(width: 12),
-          if (right != null)
-            ClipRRect(
-              borderRadius: BorderRadius.circular(11),
-              child: Image.network(
-                right,
-                width: 110,
-                height: 245,
-                fit: BoxFit.cover,
-              ),
-            ),
-        ],
+            );
+          },
+        ),
       ),
     );
   }
@@ -302,17 +288,17 @@ class _CommunityDetailPageState extends State<CommunityDetailPage> {
     );
   }
 
-  // ---- Build From Firestore ----
   Widget _buildFromDocument(DocumentSnapshot doc) {
     final raw = doc.data();
     if (raw == null || raw is! Map<String, dynamic>) {
       return const Center(child: Text('Dados da comunidade inválidos'));
     }
+
     final data = Map<String, dynamic>.from(raw);
-    final nome = (data['name'] ?? '').toString();
-    final imagem = (data['photo'] ?? '').toString();
-    final descricao = (data['description'] ?? '').toString();
-    final imagens = _parseImages(data['images']);
+    final nome = (data['nome'] ?? '').toString();
+    final imagem = (data['imagem'] ?? '').toString();
+    final descricao = (data['descricao'] ?? '').toString();
+    final imagensExtras = _parseImages(data['imagensExtras']);
     final memberCount = _parseMemberCount(data['memberCount']);
     final mapsUrl = data['mapsUrl']?.toString();
 
@@ -322,7 +308,7 @@ class _CommunityDetailPageState extends State<CommunityDetailPage> {
         children: [
           _buildHeader(nome, imagem, memberCount),
           _buildDescription(descricao),
-          _buildImagesLayout(imagens, imagem),
+          _buildImagesCarousel(imagensExtras, imagem),
           _buildSubscribeButtonLocal(),
           if (mapsUrl != null && mapsUrl.isNotEmpty) _buildMapsButton(mapsUrl),
           const SizedBox(height: 16),
@@ -331,7 +317,6 @@ class _CommunityDetailPageState extends State<CommunityDetailPage> {
     );
   }
 
-  // ---- Build From Props ----
   Widget _buildFromProps() {
     final nome = widget.nome ?? 'Comunidade';
     final imagem = widget.imagem ?? '';
@@ -346,7 +331,7 @@ class _CommunityDetailPageState extends State<CommunityDetailPage> {
         children: [
           _buildHeader(nome, imagem, memberCount),
           _buildDescription(descricao),
-          _buildImagesLayout(imagens, imagem),
+          _buildImagesCarousel(imagens, imagem),
           _buildSubscribeButtonLocal(),
           if (mapsUrl != null && mapsUrl.isNotEmpty) _buildMapsButton(mapsUrl),
           const SizedBox(height: 16),
@@ -373,9 +358,7 @@ class _CommunityDetailPageState extends State<CommunityDetailPage> {
                       builder: (context, snapshot) {
                         if (snapshot.hasError) {
                           return Center(
-                            child: Text(
-                                'Erro ao carregar comunidade: ${snapshot.error}'),
-                          );
+                              child: Text('Erro ao carregar: ${snapshot.error}'));
                         }
                         if (snapshot.connectionState ==
                             ConnectionState.waiting) {
@@ -392,14 +375,12 @@ class _CommunityDetailPageState extends State<CommunityDetailPage> {
                     )
                   : _buildFromProps(),
             ),
-
-            // 🔙 Botão de voltar
             Positioned(
               top: 12,
               left: 12,
               child: IconButton(
-                icon:
-                    const Icon(Icons.arrow_back, color: Colors.black, size: 28),
+                icon: const Icon(Icons.arrow_back,
+                    color: Colors.black, size: 28),
                 onPressed: () => Navigator.of(context).pop(),
               ),
             ),

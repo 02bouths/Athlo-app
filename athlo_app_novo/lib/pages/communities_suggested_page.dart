@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
+import 'create_community_page.dart'; // <-- IMPORT ADICIONADO
 
+// -------------------- PÁGINA PRINCIPAL --------------------
 class CommunitiesSuggestedPage extends StatefulWidget {
   const CommunitiesSuggestedPage({super.key});
 
@@ -31,12 +33,16 @@ class _CommunitiesSuggestedPageState extends State<CommunitiesSuggestedPage> {
 
   @override
   Widget build(BuildContext context) {
+    // bottom nav height (padrão) para evitar sobreposição
+    final double bottomNavHeight = kBottomNavigationBarHeight;
+
     return Scaffold(
       backgroundColor: Colors.white,
       body: SafeArea(
         child: SingleChildScrollView(
+          // adiciona padding inferior para garantir que o link não fique escondido pela bottom nav
           child: Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+            padding: EdgeInsets.fromLTRB(16, 12, 16, 12 + bottomNavHeight / 2),
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
@@ -78,7 +84,17 @@ class _CommunitiesSuggestedPageState extends State<CommunitiesSuggestedPage> {
                         members: community['members'],
                         imageUrl: community['image'],
                         onTap: () {
-                          // TODO: Navegar para CommunityDetailPage passando dados reais
+                          // 👉 Navegar para página de detalhes da comunidade
+                          Navigator.push(
+                            context,
+                            MaterialPageRoute(
+                              builder: (_) => CommunityDetailPage(
+                                name: community['name'],
+                                members: community['members'],
+                                imageUrl: community['image'],
+                              ),
+                            ),
+                          );
                         },
                       ),
                     );
@@ -87,10 +103,16 @@ class _CommunitiesSuggestedPageState extends State<CommunitiesSuggestedPage> {
 
                 const SizedBox(height: 20),
 
-                // Botão "Criar comunidade"
+                // ================================
+                // Texto "Criar comunidade" LARANJA
+                // ================================
                 GestureDetector(
                   onTap: () {
-                    // TODO: ação para criar comunidade
+                    // Navega para CreateCommunityPage ao tocar
+                    Navigator.push(
+                      context,
+                      MaterialPageRoute(builder: (_) => const CreateCommunityPage()),
+                    );
                   },
                   child: Row(
                     mainAxisAlignment: MainAxisAlignment.center,
@@ -99,16 +121,17 @@ class _CommunitiesSuggestedPageState extends State<CommunitiesSuggestedPage> {
                         'Criar comunidade',
                         style: TextStyle(
                           fontSize: 16,
-                          color: Color(0xFFD2691E), // laranja
+                          color: Color(0xFFFF914D), // cor laranja similar à sua imagem
                           fontWeight: FontWeight.bold,
                         ),
                       ),
-                      SizedBox(width: 6),
-                      Icon(Icons.double_arrow, color: Color(0xFFD2691E)),
+                      SizedBox(width: 8),
+                      Icon(Icons.double_arrow, color: Color(0xFFFF914D)),
                     ],
                   ),
                 ),
 
+                // espaço extra para garantir que o link não fique colado na 'Minhas comunidades' e para visibilidade com bottom nav
                 const SizedBox(height: 30),
 
                 // Seção "Minhas comunidades"
@@ -212,6 +235,42 @@ class CommunityCard extends StatelessWidget {
             ),
           ],
         ),
+      ),
+    );
+  }
+}
+
+// -------------------- NOVA PÁGINA DE DETALHE --------------------
+class CommunityDetailPage extends StatelessWidget {
+  final String name;
+  final int members;
+  final String imageUrl;
+
+  const CommunityDetailPage({
+    super.key,
+    required this.name,
+    required this.members,
+    required this.imageUrl,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      appBar: AppBar(
+        backgroundColor: Colors.black,
+        title: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(name, style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
+            Text(
+              '$members membros',
+              style: const TextStyle(fontSize: 13, color: Colors.white70),
+            ),
+          ],
+        ),
+      ),
+      body: Center(
+        child: Text("Chat da comunidade aqui..."),
       ),
     );
   }

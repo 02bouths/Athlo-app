@@ -1,106 +1,288 @@
 import 'package:flutter/material.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
 import 'community_detail_page.dart';
+import 'create_community_page.dart';
 
-class SearchPage extends StatelessWidget {
+class SearchPage extends StatefulWidget {
   const SearchPage({super.key});
 
-  // TROCA: "Corrida e Maratona" foi substituída por "Muay Thai" com as imagens que você enviou.
-  static List<Map<String, String>> comunidadesGlobais = [
-    {
-      "nome": "Jiu-Jitsu",
-      "imagem": "https://primeiroround.com.br/wp-content/uploads/2024/10/poatan2.jpg",
-      "descricao": "Se você gosta de artes marciais e quer aprender ou melhorar no Jiu-Jitsu, essa comunidade é para você! Participe de treinos, eventos e troque experiências com outros praticantes.",
-      "imagemDetalhes": "https://i.ytimg.com/vi/yiDDwBHLolo/hqdefault.jpg",
-      "mapsUrl": "https://www.google.com/maps/search/?api=1&query=Academia+de+Jiu-Jitsu",
-    },
-    {
-      "nome": "Muay Thai",
-      "imagem": "https://lh3.googleusercontent.com/gps-cs-s/AC9h4npPOdbYg1E6i9BGQ2KhEc0qmTGcOsFe4ol87EgBO84QaJKiTkS0N-wfMTfqHkcwglQzgQMMiH8mtZq8EQUqDZCJD3JiPVoRxBOxn6YEBjrXIG_grdF0sH1QQ8kkibuUs4T2ArMn=s680-w680-h510-rw",
-      "imagem2": "https://lh3.googleusercontent.com/gps-cs-s/AC9h4nrliA5f__lFtbNHJS44g09OHwHP2Wq3kWKGjPH06EMShaOVSaIJ9xuCmh7VXTShI8bqvzPdj8-44pD7ryaOKrBvI8gKN581Oqr4-KaRmj8_ZgiANNmfbnXRAoc_redKSwFVEkjb=s680-w680-h510-rw",
-      "descricao": "Treinamentos, técnicas e condicionamento para Muay Thai.",
-      "imagemDetalhes": "https://lh3.googleusercontent.com/gps-cs-s/AC9h4npPOdbYg1E6i9BGQ2KhEc0qmTGcOsFe4ol87EgBO84QaJKiTkS0N-wfMTfqHkcwglQzgQMMiH8mtZq8EQUqDZCJD3JiPVoRxBOxn6YEBjrXIG_grdF0sH1QQ8kkibuUs4T2ArMn=s680-w680-h510-rw",
-      "mapsUrl": "https://www.google.com/maps/search/?api=1&query=Academia+de+Muay+Thai",
-    },
-    {
-      "nome": "Kung Fu",
-      "imagem": "https://fator01.wordpress.com/wp-content/uploads/2011/04/brucelee.jpg?w=400",
-      "descricao": "Comunidade para praticantes e fãs de Kung Fu. Aprenda técnicas e troque experiências.",
-      "imagemDetalhes": "https://fotos.perfil.com/2020/11/27/la-camara-36-de-shaolin-1087690.jpg",
-      "mapsUrl": "https://www.google.com/maps/search/?api=1&query=Academia+de+Kung+Fu",
-    },
-  ];
+  @override
+  State<SearchPage> createState() => _SearchPageState();
+}
+
+class _SearchPageState extends State<SearchPage> {
+  final TextEditingController _searchController = TextEditingController();
+  String searchQuery = '';
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(
-        backgroundColor: const Color(0xFFE37B40),
-        title: const Text("Pesquisar Comunidades", style: TextStyle(color: Colors.white)),
-      ),
-      body: Padding(
-        padding: const EdgeInsets.all(16),
-        child: Column(
+      backgroundColor: Colors.white,
+      body: SafeArea(
+        child: Stack(
           children: [
-            TextField(
-              style: const TextStyle(color: Colors.black),
-              decoration: InputDecoration(
-                hintText: "Digite o nome da comunidade",
-                prefixIcon: const Icon(Icons.search),
-                filled: true,
-                fillColor: Colors.grey[200],
-                border: OutlineInputBorder(
-                  borderRadius: BorderRadius.circular(8),
-                  borderSide: BorderSide.none,
-                ),
-              ),
-            ),
-            const SizedBox(height: 20),
-            Expanded(
-              child: ListView.builder(
-                itemCount: comunidadesGlobais.length,
-                itemBuilder: (context, index) {
-                  final comunidade = comunidadesGlobais[index];
-                  return Card(
-                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-                    margin: const EdgeInsets.symmetric(vertical: 8),
-                    child: ListTile(
-                      leading: ClipRRect(
+            Padding(
+              padding: const EdgeInsets.fromLTRB(16, 16, 16, 16),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  // Campo de busca
+                  TextField(
+                    controller: _searchController,
+                    style: const TextStyle(color: Colors.black),
+                    decoration: InputDecoration(
+                      hintText: "Busque sua comunidade",
+                      prefixIcon: const Icon(Icons.search),
+                      filled: true,
+                      fillColor: Colors.grey[200],
+                      border: OutlineInputBorder(
                         borderRadius: BorderRadius.circular(8),
-                        child: Image.network(
-                          comunidade["imagem"]!,
-                          width: 60,
-                          height: 60,
-                          fit: BoxFit.cover,
-                        ),
+                        borderSide: BorderSide.none,
                       ),
-                      title: Text(comunidade["nome"]!),
-                      onTap: () {
-                        // monta lista de imagens para o carrossel (se houver imagem2)
-                        final List<String> galeria = [
-                          (comunidade["imagemDetalhes"] ?? comunidade["imagem"])!
-                        ];
-                        if (comunidade["imagem2"] != null && comunidade["imagem2"]!.isNotEmpty) {
-                          galeria.add(comunidade["imagem2"]!);
+                    ),
+                    onChanged: (value) {
+                      setState(() => searchQuery = value.toLowerCase());
+                    },
+                  ),
+
+                  const SizedBox(height: 40),
+
+                  const Text(
+                    'Comunidades Sugeridas:',
+                    style: TextStyle(
+                      fontSize: 25,
+                      fontWeight: FontWeight.w800,
+                      color: Colors.black,
+                    ),
+                  ),
+
+                  const SizedBox(height: 12),
+
+                  Expanded(
+                    child: StreamBuilder<QuerySnapshot>(
+                      stream: FirebaseFirestore.instance
+                          .collection('communities')
+                          .orderBy('criadoEm', descending: true)
+                          .snapshots(),
+                      builder: (context, snapshot) {
+                        if (snapshot.connectionState ==
+                            ConnectionState.waiting) {
+                          return const Center(
+                              child: CircularProgressIndicator());
+                        }
+                        if (snapshot.hasError) {
+                          return const Center(
+                              child: Text("Erro ao carregar comunidades"));
                         }
 
-                        Navigator.push(
-                          context,
-                          MaterialPageRoute(
-                            builder: (_) => CommunityDetailPage(
-                              nome: comunidade["nome"]!,
-                              imagem: comunidade["imagemDetalhes"] ?? comunidade["imagem"]!,
-                              descricao: comunidade["descricao"]!,
-                              imagens: galeria,
-                              mapsUrl: comunidade["mapsUrl"],
-                            ),
-                          ),
+                        final communities = snapshot.data?.docs ?? [];
+
+                        final filtered = communities.where((doc) {
+                          final data = doc.data() as Map<String, dynamic>;
+                          final nome =
+                              (data['nome'] ?? '').toString().toLowerCase();
+                          return nome.contains(searchQuery);
+                        }).toList();
+
+                        // Se estiver vazio, mostra mensagem + botões
+                        if (filtered.isEmpty) {
+                          return ListView(
+                            padding: const EdgeInsets.only(bottom: 140),
+                            children: [
+                              const SizedBox(height: 40),
+                              const Center(
+                                child: Text(
+                                  "Nenhuma comunidade encontrada",
+                                  style: TextStyle(color: Colors.black54),
+                                ),
+                              ),
+                              const SizedBox(height: 40),
+                              _buildCriarComunidadeButton(context),
+                              _buildMinhasComunidadesButton(),
+                            ],
+                          );
+                        }
+
+                        final limited = filtered.take(6).toList();
+
+                        return ListView.builder(
+                          padding: const EdgeInsets.only(bottom: 140),
+                          itemCount: limited.length + 2,
+                          itemBuilder: (context, index) {
+                            if (index == limited.length) {
+                              return _buildCriarComunidadeButton(context);
+                            }
+
+                            if (index == limited.length + 1) {
+                              return _buildMinhasComunidadesButton();
+                            }
+
+                            final data =
+                                limited[index].data() as Map<String, dynamic>;
+
+                            final nome = (data['nome'] ?? 'Sem nome').toString();
+                            final descricao =
+                                (data['descricao'] ?? 'Sem descrição')
+                                    .toString();
+                            final imagem = (data['imagem'] ??
+                                    'https://via.placeholder.com/150?text=Comunidade')
+                                .toString();
+                            final membersRaw =
+                                data['memberCount'] ?? data['members'] ?? 0;
+                            final members = membersRaw.toString();
+
+                            return Padding(
+                              padding:
+                                  const EdgeInsets.symmetric(vertical: 8.0),
+                              child: GestureDetector(
+                                onTap: () {
+                                  Navigator.push(
+                                    context,
+                                    MaterialPageRoute(
+                                      builder: (_) => CommunityDetailPage(
+                                        communityId: limited[index].id,
+                                        nome: nome,
+                                        imagem: imagem,
+                                      ),
+                                    ),
+                                  );
+                                },
+                                child: Container(
+                                  decoration: BoxDecoration(
+                                    color: Colors.black,
+                                    borderRadius: BorderRadius.circular(30),
+                                  ),
+                                  padding: const EdgeInsets.symmetric(
+                                      vertical: 12, horizontal: 12),
+                                  child: Row(
+                                    children: [
+                                      ClipRRect(
+                                        borderRadius: BorderRadius.circular(8),
+                                        child: Image.network(
+                                          imagem,
+                                          width: 56,
+                                          height: 56,
+                                          fit: BoxFit.cover,
+                                          errorBuilder: (_, __, ___) =>
+                                              Container(
+                                            width: 56,
+                                            height: 56,
+                                            color: Colors.grey[300],
+                                            child: const Icon(Icons.groups,
+                                                color: Colors.grey),
+                                          ),
+                                        ),
+                                      ),
+                                      const SizedBox(width: 12),
+                                      Expanded(
+                                        child: Column(
+                                          crossAxisAlignment:
+                                              CrossAxisAlignment.start,
+                                          children: [
+                                            Text(
+                                              nome,
+                                              style: const TextStyle(
+                                                fontSize: 16,
+                                                fontWeight: FontWeight.w700,
+                                                color: Colors.white,
+                                              ),
+                                            ),
+                                            const SizedBox(height: 6),
+                                            Text(
+                                              '$members membros',
+                                              style: const TextStyle(
+                                                fontSize: 13,
+                                                color: Color(0xFF2ED573),
+                                                fontWeight: FontWeight.w700,
+                                              ),
+                                            ),
+                                          ],
+                                        ),
+                                      ),
+                                    ],
+                                  ),
+                                ),
+                              ),
+                            );
+                          },
                         );
                       },
                     ),
-                  );
-                },
+                  ),
+                ],
               ),
             ),
+
+            // Logo fixa no rodapé
+            Align(
+              alignment: Alignment.bottomCenter,
+              child: Padding(
+                padding: const EdgeInsets.only(bottom: 35.0),
+                child: Image.asset(
+                  'assets/images/logo.png',
+                  width: 80,
+                  height: 80,
+                ),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  // --- Widgets auxiliares ---
+  Widget _buildCriarComunidadeButton(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.only(top: 18.0, left: 4.0),
+      child: GestureDetector(
+        onTap: () {
+          Navigator.push(
+            context,
+            MaterialPageRoute(
+              builder: (_) => const CreateCommunityPage(),
+            ),
+          );
+        },
+        child: Row(
+          mainAxisAlignment: MainAxisAlignment.start,
+          children: const [
+            Text(
+              'Criar comunidade',
+              style: TextStyle(
+                fontSize: 19.93,
+                color: Color(0xFFFF914D),
+                fontWeight: FontWeight.w700,
+              ),
+            ),
+            SizedBox(width: 8),
+            Icon(Icons.double_arrow, color: Color(0xFFFF914D)),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildMinhasComunidadesButton() {
+    return Padding(
+      padding: const EdgeInsets.only(top: 12.0, left: 4.0),
+      child: GestureDetector(
+        onTap: () {
+          // futura navegação
+        },
+        child: Row(
+          mainAxisAlignment: MainAxisAlignment.start,
+          children: const [
+            Text(
+              'Minhas comunidades',
+              style: TextStyle(
+                fontSize: 19.93,
+                color: Colors.black,
+                fontWeight: FontWeight.w700,
+              ),
+            ),
+            SizedBox(width: 8),
+            Icon(Icons.chevron_right, color: Colors.black),
           ],
         ),
       ),

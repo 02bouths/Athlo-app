@@ -2,7 +2,6 @@ import 'package:flutter/material.dart';
 import 'search_page.dart';
 import 'profile_page.dart';
 import 'package:webview_flutter/webview_flutter.dart';
-import 'create_community_page.dart';
 import 'community_detail_page.dart';
 
 class HomeFeedPage extends StatefulWidget {
@@ -158,16 +157,6 @@ class _HomeFeedPageState extends State<HomeFeedPage> {
           }
 
           return SafeArea(child: videoWidget);
-        },
-      ),
-      floatingActionButton: FloatingActionButton(
-        backgroundColor: Colors.orange,
-        child: const Icon(Icons.add),
-        onPressed: () {
-          Navigator.push(
-            context,
-            MaterialPageRoute(builder: (_) => const CreateCommunityPage()),
-          );
         },
       ),
     );
