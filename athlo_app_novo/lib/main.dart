@@ -3,6 +3,7 @@ import 'package:firebase_core/firebase_core.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'firebase_options.dart';
 
+import 'pages/main_navigation.dart';
 import 'pages/welcome_page.dart';
 import 'pages/home_feed_page.dart';
 import 'pages/login_page.dart';
@@ -42,8 +43,8 @@ class MyApp extends StatelessWidget {
             );
           }
           if (snapshot.hasData) {
-            // Usuário logado → vai para Home
-            return const HomeFeedPage();
+              // Usuário logado → vai para navegação principal (com a nova barra)
+              return const MainNavigation();
           }
           // Usuário não logado → vai para Welcome
           return const WelcomePage();

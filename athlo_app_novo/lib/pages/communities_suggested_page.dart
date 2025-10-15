@@ -14,21 +14,6 @@ class _CommunitiesSuggestedPageState extends State<CommunitiesSuggestedPage> {
 
   // Mock de comunidades para fase 1
   final List<Map<String, dynamic>> _communities = [
-    {
-      'name': 'Raposos Tavares – Basquetebol',
-      'members': 124,
-      'image': 'https://picsum.photos/200?1',
-    },
-    {
-      'name': 'Comunidade de Vôlei Zona Sul',
-      'members': 87,
-      'image': 'https://picsum.photos/200?2',
-    },
-    {
-      'name': 'Corrida de Rua SP',
-      'members': 230,
-      'image': 'https://picsum.photos/200?3',
-    },
   ];
 
   @override

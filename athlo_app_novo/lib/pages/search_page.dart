@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'community_detail_page.dart';
 import 'create_community_page.dart';
+import 'main_navigation.dart'; // <- ADICIONADO
 
 class SearchPage extends StatefulWidget {
   const SearchPage({super.key});
@@ -16,12 +17,12 @@ class _SearchPageState extends State<SearchPage> {
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      backgroundColor: Colors.white,
-      body: SafeArea(
-        child: Stack(
-          children: [
-            Padding(
+    return SafeArea(
+      child: Stack(
+        children: [
+          Container(
+            color: Colors.white,
+            child: Padding(
               padding: const EdgeInsets.fromLTRB(16, 16, 16, 16),
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
@@ -65,10 +66,8 @@ class _SearchPageState extends State<SearchPage> {
                           .orderBy('criadoEm', descending: true)
                           .snapshots(),
                       builder: (context, snapshot) {
-                        if (snapshot.connectionState ==
-                            ConnectionState.waiting) {
-                          return const Center(
-                              child: CircularProgressIndicator());
+                        if (snapshot.connectionState == ConnectionState.waiting) {
+                          return const Center(child: CircularProgressIndicator());
                         }
                         if (snapshot.hasError) {
                           return const Center(
@@ -121,28 +120,28 @@ class _SearchPageState extends State<SearchPage> {
                                 limited[index].data() as Map<String, dynamic>;
 
                             final nome = (data['nome'] ?? 'Sem nome').toString();
-                            final descricao =
-                                (data['descricao'] ?? 'Sem descrição')
-                                    .toString();
                             final imagem = (data['imagem'] ??
                                     'https://via.placeholder.com/150?text=Comunidade')
                                 .toString();
-                            final membersRaw =
-                                data['memberCount'] ?? data['members'] ?? 0;
-                            final members = membersRaw.toString();
+
+                            final membersCount = (data['memberCount'] is int)
+                                ? data['memberCount'] as int
+                                : int.tryParse(data['memberCount']?.toString() ?? '0') ?? 0;
 
                             return Padding(
-                              padding:
-                                  const EdgeInsets.symmetric(vertical: 8.0),
+                              padding: const EdgeInsets.symmetric(vertical: 8.0),
                               child: GestureDetector(
                                 onTap: () {
-                                  Navigator.push(
-                                    context,
+                                  // Abrir CommunityDetailPage DENTRO do MainNavigation
+                                  Navigator.of(context).push(
                                     MaterialPageRoute(
-                                      builder: (_) => CommunityDetailPage(
-                                        communityId: limited[index].id,
-                                        nome: nome,
-                                        imagem: imagem,
+                                      builder: (_) => MainNavigation(
+                                        currentIndex: 1, // mantém a aba de busca selecionada
+                                        child: CommunityDetailPage(
+                                          communityId: limited[index].id,
+                                          nome: nome,
+                                          imagem: imagem,
+                                        ),
                                       ),
                                     ),
                                   );
@@ -189,7 +188,7 @@ class _SearchPageState extends State<SearchPage> {
                                             ),
                                             const SizedBox(height: 6),
                                             Text(
-                                              '$members membros',
+                                              '$membersCount membros',
                                               style: const TextStyle(
                                                 fontSize: 13,
                                                 color: Color(0xFF2ED573),
@@ -212,26 +211,25 @@ class _SearchPageState extends State<SearchPage> {
                 ],
               ),
             ),
+          ),
 
-            // Logo fixa no rodapé
-            Align(
-              alignment: Alignment.bottomCenter,
-              child: Padding(
-                padding: const EdgeInsets.only(bottom: 35.0),
-                child: Image.asset(
-                  'assets/images/logo.png',
-                  width: 80,
-                  height: 80,
-                ),
+          // Logo fixa no rodapé
+          Align(
+            alignment: Alignment.bottomCenter,
+            child: Padding(
+              padding: const EdgeInsets.only(bottom: 35.0),
+              child: Image.asset(
+                'assets/images/logo.png',
+                width: 80,
+                height: 80,
               ),
             ),
-          ],
-        ),
+          ),
+        ],
       ),
     );
   }
 
-  // --- Widgets auxiliares ---
   Widget _buildCriarComunidadeButton(BuildContext context) {
     return Padding(
       padding: const EdgeInsets.only(top: 18.0, left: 4.0),

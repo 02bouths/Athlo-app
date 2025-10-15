@@ -1,8 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:firebase_auth/firebase_auth.dart';
 import 'package:url_launcher/url_launcher.dart';
-
-// 👉 páginas internas
 import 'chat_page.dart';
 
 class CommunityDetailPage extends StatefulWidget {
@@ -33,17 +32,60 @@ class CommunityDetailPage extends StatefulWidget {
 class _CommunityDetailPageState extends State<CommunityDetailPage> {
   bool _joined = false;
   bool _showFullDescription = false;
+  String? _uid = FirebaseAuth.instance.currentUser?.uid;
 
-  void _toggleJoinLocal() {
-    setState(() => _joined = !_joined);
-    if (_joined) {
-      Navigator.push(
-        context,
-        MaterialPageRoute(
-          builder: (context) =>
-              ChatPage(nomeComunidade: widget.nome ?? 'Comunidade'),
-        ),
-      );
+  @override
+  void initState() {
+    super.initState();
+    _checkIfJoined();
+  }
+
+  Future<void> _checkIfJoined() async {
+    if (widget.communityId == null || _uid == null) return;
+    final memberDoc = await FirebaseFirestore.instance
+        .collection('communities')
+        .doc(widget.communityId)
+        .collection('members')
+        .doc(_uid)
+        .get();
+    if (mounted) setState(() => _joined = memberDoc.exists);
+  }
+
+  Future<void> _toggleJoinFirebase() async {
+    if (widget.communityId == null || _uid == null) return;
+    final communityRef =
+        FirebaseFirestore.instance.collection('communities').doc(widget.communityId);
+    final memberRef = communityRef.collection('members').doc(_uid);
+
+    final snapshot = await memberRef.get();
+
+    if (snapshot.exists) {
+      // 🔹 sair da comunidade
+      await memberRef.delete();
+      await communityRef.update({
+        'memberCount': FieldValue.increment(-1),
+      });
+      if (mounted) setState(() => _joined = false);
+    } else {
+      // 🔹 entrar na comunidade
+      await memberRef.set({
+        'joinedAt': FieldValue.serverTimestamp(),
+      });
+      await communityRef.update({
+        'memberCount': FieldValue.increment(1),
+      });
+      if (mounted) {
+        setState(() => _joined = true);
+        Navigator.push(
+          context,
+          MaterialPageRoute(
+            builder: (context) => ChatPage(
+              communityId: widget.communityId!,
+              nomeComunidade: widget.nome ?? 'Comunidade',
+            ),
+          ),
+        );
+      }
     }
   }
 
@@ -165,10 +207,8 @@ class _CommunityDetailPageState extends State<CommunityDetailPage> {
     );
   }
 
-  /// 🔹 Novo layout de imagens com carrossel horizontal
   Widget _buildImagesCarousel(List<String> imagens, String fallback) {
-    final List<String> allImages =
-        imagens.isNotEmpty ? imagens : [fallback];
+    final List<String> allImages = imagens.isNotEmpty ? imagens : [fallback];
 
     return Padding(
       padding: const EdgeInsets.symmetric(vertical: 20),
@@ -205,7 +245,7 @@ class _CommunityDetailPageState extends State<CommunityDetailPage> {
     );
   }
 
-  Widget _buildSubscribeButtonLocal() {
+  Widget _buildSubscribeButton() {
     return Padding(
       padding: const EdgeInsets.symmetric(vertical: 12),
       child: Center(
@@ -213,9 +253,11 @@ class _CommunityDetailPageState extends State<CommunityDetailPage> {
           width: 240,
           height: 55,
           child: ElevatedButton(
-            onPressed: _toggleJoinLocal,
+            onPressed: _toggleJoinFirebase,
             style: ElevatedButton.styleFrom(
-              backgroundColor: const Color(0xFFEBCC6E),
+              backgroundColor: _joined
+                  ? Colors.grey.shade400
+                  : const Color(0xFFEBCC6E),
               shape: RoundedRectangleBorder(
                 borderRadius: BorderRadius.circular(14),
               ),
@@ -263,31 +305,6 @@ class _CommunityDetailPageState extends State<CommunityDetailPage> {
     );
   }
 
-  Widget _bottomNavigationBar() {
-    return Container(
-      decoration: const BoxDecoration(
-        color: Colors.black,
-        borderRadius: BorderRadius.vertical(top: Radius.circular(13)),
-      ),
-      child: BottomNavigationBar(
-        backgroundColor: Colors.transparent,
-        elevation: 0,
-        type: BottomNavigationBarType.fixed,
-        selectedItemColor: Colors.orange,
-        unselectedItemColor: Colors.white70,
-        showSelectedLabels: false,
-        showUnselectedLabels: false,
-        items: const [
-          BottomNavigationBarItem(icon: Icon(Icons.home), label: 'Home'),
-          BottomNavigationBarItem(icon: Icon(Icons.group_add), label: 'Grupos'),
-          BottomNavigationBarItem(icon: Icon(Icons.add), label: 'Adicionar'),
-          BottomNavigationBarItem(icon: Icon(Icons.place), label: 'Mapa'),
-          BottomNavigationBarItem(icon: Icon(Icons.person), label: 'Perfil'),
-        ],
-      ),
-    );
-  }
-
   Widget _buildFromDocument(DocumentSnapshot doc) {
     final raw = doc.data();
     if (raw == null || raw is! Map<String, dynamic>) {
@@ -309,30 +326,7 @@ class _CommunityDetailPageState extends State<CommunityDetailPage> {
           _buildHeader(nome, imagem, memberCount),
           _buildDescription(descricao),
           _buildImagesCarousel(imagensExtras, imagem),
-          _buildSubscribeButtonLocal(),
-          if (mapsUrl != null && mapsUrl.isNotEmpty) _buildMapsButton(mapsUrl),
-          const SizedBox(height: 16),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildFromProps() {
-    final nome = widget.nome ?? 'Comunidade';
-    final imagem = widget.imagem ?? '';
-    final descricao = widget.descricao ?? '';
-    final imagens = widget.imagens ?? [];
-    final memberCount = 0;
-    final mapsUrl = widget.mapsUrl;
-
-    return SingleChildScrollView(
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          _buildHeader(nome, imagem, memberCount),
-          _buildDescription(descricao),
-          _buildImagesCarousel(imagens, imagem),
-          _buildSubscribeButtonLocal(),
+          _buildSubscribeButton(),
           if (mapsUrl != null && mapsUrl.isNotEmpty) _buildMapsButton(mapsUrl),
           const SizedBox(height: 16),
         ],
@@ -344,7 +338,6 @@ class _CommunityDetailPageState extends State<CommunityDetailPage> {
   Widget build(BuildContext context) {
     return Scaffold(
       backgroundColor: Colors.white,
-      bottomNavigationBar: _bottomNavigationBar(),
       body: SafeArea(
         child: Stack(
           children: [
@@ -360,8 +353,7 @@ class _CommunityDetailPageState extends State<CommunityDetailPage> {
                           return Center(
                               child: Text('Erro ao carregar: ${snapshot.error}'));
                         }
-                        if (snapshot.connectionState ==
-                            ConnectionState.waiting) {
+                        if (snapshot.connectionState == ConnectionState.waiting) {
                           return const Center(
                               child: CircularProgressIndicator());
                         }
@@ -373,7 +365,7 @@ class _CommunityDetailPageState extends State<CommunityDetailPage> {
                         return _buildFromDocument(doc);
                       },
                     )
-                  : _buildFromProps(),
+                  : const Center(child: Text('Comunidade inválida')),
             ),
             Positioned(
               top: 12,

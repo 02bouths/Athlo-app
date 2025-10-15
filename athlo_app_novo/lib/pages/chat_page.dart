@@ -35,9 +35,14 @@ const Color kPlaceholderColor = Color(0xFFA1A1A1);
 const Color kAvatarFallback = Color(0xFFDCC7F7);
 
 class ChatPage extends StatefulWidget {
+  final String communityId;
   final String nomeComunidade;
 
-  const ChatPage({super.key, required this.nomeComunidade});
+  const ChatPage({
+    super.key,
+    required this.communityId,
+    required this.nomeComunidade,
+  });
 
   @override
   State<ChatPage> createState() => _ChatPageState();
@@ -65,8 +70,6 @@ class _ChatPageState extends State<ChatPage> {
   // Key para detectar se o pointer up ocorreu dentro do botão
   final GlobalKey _micKey = GlobalKey();
 
-  String get communityId => _slugify(widget.nomeComunidade);
-
   @override
   void initState() {
     super.initState();
@@ -90,20 +93,38 @@ class _ChatPageState extends State<ChatPage> {
   }
 
   Future<void> _loadCommunityMeta() async {
-    try {
-      final doc = await FirebaseFirestore.instance.collection('communities').doc(communityId).get();
-      if (doc.exists) {
-        final data = doc.data() as Map<String, dynamic>? ?? {};
-        setState(() {
-          _communityPhoto = data['photo'] as String?;
-          final members = data['members'] as List<dynamic>?;
-          _memberCount = members?.length ?? (data['memberCount'] is int ? data['memberCount'] as int : null);
-        });
+  try {
+    final communityRef = FirebaseFirestore.instance.collection('communities').doc(widget.communityId);
+    final doc = await communityRef.get();
+
+    if (doc.exists) {
+      final data = doc.data() as Map<String, dynamic>? ?? {};
+      String? photo = data['imagem'] as String? ?? data['photo'] as String?;
+
+      // 🔹 Primeiro tenta pegar o número de membros salvos diretamente no doc
+      int count = 0;
+      if (data['memberCount'] is int) {
+        count = data['memberCount'];
+      } 
+      // 🔹 Se não houver, tenta ver se há uma lista no campo "members"
+      else if (data['members'] is List) {
+        count = (data['members'] as List).length;
+      } 
+      // 🔹 Se não houver lista, tenta contar a subcoleção "members"
+      else {
+        final membersSnap = await communityRef.collection('members').get();
+        count = membersSnap.docs.length;
       }
-    } catch (_) {
-      // silencioso
+
+      setState(() {
+        _communityPhoto = photo;
+        _memberCount = count;
+      });
     }
+  } catch (e) {
+    debugPrint('Erro ao carregar meta: $e');
   }
+}
 
   String _slugify(String input) {
     final s = input
@@ -173,7 +194,7 @@ class _ChatPageState extends State<ChatPage> {
 
       await FirebaseFirestore.instance
           .collection('communities')
-          .doc(communityId)
+          .doc(widget.communityId)
           .collection('messages')
           .add(payload);
 
@@ -202,8 +223,9 @@ class _ChatPageState extends State<ChatPage> {
     if (!await file.exists()) return null;
     final fileName = localPath.split('/').last;
     final ref = _storage.ref().child(
-      'communities/$communityId/$folder/${DateTime.now().millisecondsSinceEpoch}_$fileName',
+  '   communities/${widget.communityId}/$folder/${DateTime.now().millisecondsSinceEpoch}_$fileName',
     );
+
 
     // Detecta tipo automaticamente ou usa forcedContentType se informado
     String contentType;
@@ -241,7 +263,7 @@ class _ChatPageState extends State<ChatPage> {
     required String contentType,
   }) async {
     try {
-      final ref = _storage.ref().child('communities/$communityId/$folder/${DateTime.now().millisecondsSinceEpoch}_$filename');
+      final ref = _storage.ref().child('communities/${widget.communityId}/$folder/${DateTime.now().millisecondsSinceEpoch}_$filename');
       final metadata = SettableMetadata(contentType: contentType);
       final snapshot = await ref.putData(bytes, metadata);
       final url = await snapshot.ref.getDownloadURL();
@@ -567,47 +589,115 @@ class _ChatPageState extends State<ChatPage> {
   @override
   Widget build(BuildContext context) {
     final uid = FirebaseAuth.instance.currentUser?.uid;
-
+    print('🆔 communityId recebido: ${widget.communityId}');
     return Scaffold(
       backgroundColor: kBodyBackground,
       appBar: AppBar(
-        backgroundColor: kAppBarColor,
-        elevation: 0,
-        leading: IconButton(
-          icon: const Icon(Icons.arrow_back, color: Colors.white),
-          onPressed: () => Navigator.of(context).pop(),
-        ),
-        titleSpacing: 0,
-        title: Row(
-          children: [
-            const SizedBox(width: 6),
-            // community avatar square small with rounded corners
-            ClipRRect(
+  backgroundColor: kAppBarColor,
+  elevation: 0,
+  leading: IconButton(
+    icon: const Icon(Icons.arrow_back, color: Colors.white),
+    onPressed: () => Navigator.of(context).pop(),
+  ),
+  titleSpacing: 0,
+title: StreamBuilder<DocumentSnapshot>(
+ stream: FirebaseFirestore.instance
+      .collection('communities')
+      .doc(widget.communityId)
+      .snapshots(),
+  builder: (context, snapshot) {
+    if (!snapshot.hasData || !snapshot.data!.exists) {
+      return Row(
+        children: [
+          const SizedBox(width: 6),
+          Container(
+            width: 36,
+            height: 36,
+            decoration: BoxDecoration(
+              color: kCommunityAvatarBg,
               borderRadius: BorderRadius.circular(8),
-              child: Container(
-                width: 36,
-                height: 36,
-                color: _communityPhoto != null ? Colors.transparent : kCommunityAvatarBg,
-                child: _communityPhoto != null ? Image.network(_communityPhoto!, fit: BoxFit.cover) : const SizedBox.shrink(),
+            ),
+          ),
+          const SizedBox(width: 12),
+          const Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                'Carregando...',
+                style: TextStyle(
+                    fontSize: 16,
+                    fontWeight: FontWeight.bold,
+                    color: Colors.white),
+              ),
+              Text(
+                'carregando...',
+                style: TextStyle(fontSize: 12, color: kMemberCountColor),
+              ),
+            ],
+          ),
+        ],
+      );
+    }
+
+    final data = snapshot.data!.data() as Map<String, dynamic>? ?? {};
+    // 🔹 campo correto para imagem da comunidade
+    final photoUrl = data['imagem']; 
+    final membersField = data['members'];
+    int memberCount = 0;
+    if (membersField is List) {
+      memberCount = membersField.length;
+    } else if (membersField is Map) {
+      memberCount = membersField.length;
+    } else if (data['memberCount'] is int) {
+      memberCount = data['memberCount'];
+    }
+
+    return Row(
+      children: [
+        const SizedBox(width: 6),
+        ClipRRect(
+          borderRadius: BorderRadius.circular(8),
+          child: Container(
+            width: 36,
+            height: 36,
+            color: photoUrl != null ? Colors.transparent : kCommunityAvatarBg,
+            child: photoUrl != null && photoUrl.toString().isNotEmpty
+                ? CachedNetworkImage(
+                    imageUrl: photoUrl,
+                    fit: BoxFit.cover,
+                    placeholder: (_, __) => Container(
+                      color: Colors.grey.shade700,
+                    ),
+                    errorWidget: (_, __, ___) =>
+                        const Icon(Icons.broken_image, color: Colors.white),
+                  )
+                : const Icon(Icons.people, color: Colors.white, size: 20),
+          ),
+        ),
+        const SizedBox(width: 12),
+        Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              widget.nomeComunidade,
+              style: const TextStyle(
+                fontSize: 16,
+                fontWeight: FontWeight.bold,
+                color: Colors.white,
               ),
             ),
-            const SizedBox(width: 12),
-            Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  widget.nomeComunidade,
-                  style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: Colors.white),
-                ),
-                Text(
-                  _memberCount != null ? '$_memberCount membros' : 'carregando...',
-                  style: const TextStyle(fontSize: 12, color: kMemberCountColor),
-                ),
-              ],
+            Text(
+              '$memberCount membros',
+              style:
+                  const TextStyle(fontSize: 12, color: kMemberCountColor),
             ),
           ],
         ),
-      ),
+      ],
+    );
+  },
+),
+),
       body: Column(
         children: [
           // MANTIVE O STREAMBUILDER/EXPANDED AQUI para garantir que o footer fique embaixo corretamente
@@ -615,7 +705,7 @@ class _ChatPageState extends State<ChatPage> {
             child: StreamBuilder<QuerySnapshot>(
               stream: FirebaseFirestore.instance
                   .collection('communities')
-                  .doc(communityId)
+                  .doc(widget.communityId)
                   .collection('messages')
                   .orderBy('timestamp', descending: true)
                   .limit(200)
