@@ -3,6 +3,8 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'community_detail_page.dart';
 import 'create_community_page.dart';
 import 'main_navigation.dart'; // <- ADICIONADO
+import 'saved_communities_page.dart';
+
 
 class SearchPage extends StatefulWidget {
   const SearchPage({super.key});
@@ -261,29 +263,34 @@ class _SearchPageState extends State<SearchPage> {
     );
   }
 
-  Widget _buildMinhasComunidadesButton() {
-    return Padding(
-      padding: const EdgeInsets.only(top: 12.0, left: 4.0),
-      child: GestureDetector(
-        onTap: () {
-          // futura navegação
-        },
-        child: Row(
-          mainAxisAlignment: MainAxisAlignment.start,
-          children: const [
-            Text(
-              'Minhas comunidades',
-              style: TextStyle(
-                fontSize: 19.93,
-                color: Colors.black,
-                fontWeight: FontWeight.w700,
-              ),
+    Widget _buildMinhasComunidadesButton() {
+  return Padding(
+    padding: const EdgeInsets.only(top: 12.0, left: 4.0),
+    child: GestureDetector(
+      onTap: () {
+        Navigator.of(context).push(
+          MaterialPageRoute(
+            builder: (_) => MainNavigation(currentIndex: 2),
+          ),
+        );
+      },
+      child: Row(
+        mainAxisAlignment: MainAxisAlignment.start,
+        children: const [
+          Text(
+            'Minhas comunidades',
+            style: TextStyle(
+              fontSize: 19.93,
+              color: Colors.black,
+              fontWeight: FontWeight.w700,
             ),
-            SizedBox(width: 8),
-            Icon(Icons.chevron_right, color: Colors.black),
-          ],
-        ),
+          ),
+          SizedBox(width: 8),
+          Icon(Icons.chevron_right, color: Colors.black),
+        ],
       ),
-    );
-  }
+    ),
+  );
+}
+
 }

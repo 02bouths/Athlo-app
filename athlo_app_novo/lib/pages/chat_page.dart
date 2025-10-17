@@ -198,6 +198,22 @@ class _ChatPageState extends State<ChatPage> {
           .collection('messages')
           .add(payload);
 
+          // 🔹 Atualiza informações no documento da comunidade
+try {
+  final communityRef = FirebaseFirestore.instance
+      .collection('communities')
+      .doc(widget.communityId);
+
+  await communityRef.update({
+    'lastMessage': text ?? '[mídia]',
+    'lastMessageTime': FieldValue.serverTimestamp(),
+    'messageCount': FieldValue.increment(1),
+  });
+} catch (e) {
+  debugPrint('Erro ao atualizar metadados da comunidade: $e');
+}
+
+
       _controller.clear();
       _focusNode.requestFocus();
     } catch (e) {

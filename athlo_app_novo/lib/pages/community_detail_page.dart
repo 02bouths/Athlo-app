@@ -51,41 +51,88 @@ class _CommunityDetailPageState extends State<CommunityDetailPage> {
     if (mounted) setState(() => _joined = memberDoc.exists);
   }
 
-  Future<void> _toggleJoinFirebase() async {
+    Future<void> _toggleJoinFirebase() async {
     if (widget.communityId == null || _uid == null) return;
+
     final communityRef =
         FirebaseFirestore.instance.collection('communities').doc(widget.communityId);
     final memberRef = communityRef.collection('members').doc(_uid);
+    final userSavedRef = FirebaseFirestore.instance
+        .collection('users')
+        .doc(_uid)
+        .collection('savedCommunities')
+        .doc(widget.communityId);
 
-    final snapshot = await memberRef.get();
+    try {
+      await FirebaseFirestore.instance.runTransaction((tx) async {
+        final commSnap = await tx.get(communityRef);
+        final memberSnap = await tx.get(memberRef);
 
-    if (snapshot.exists) {
-      // 🔹 sair da comunidade
-      await memberRef.delete();
-      await communityRef.update({
-        'memberCount': FieldValue.increment(-1),
+        // Se communauté não existe, abortamos (pouco provável)
+        if (!commSnap.exists) {
+          throw Exception('Comunidade não encontrada');
+        }
+
+        final commData = commSnap.data() as Map<String, dynamic>? ?? {};
+        final commName = (commData['nome'] ?? widget.nome ?? '').toString();
+        final commImage = (commData['imagem'] ?? widget.imagem ?? '').toString();
+        final currentCount = (commData['memberCount'] is int) ? commData['memberCount'] as int : 0;
+
+        if (memberSnap.exists) {
+          // -> usuário já é membro: remover
+          tx.delete(memberRef);
+          tx.update(communityRef, {
+            'memberCount': FieldValue.increment(-1),
+          });
+
+          // também removemos savedCommunities do usuário (se existir)
+          tx.delete(userSavedRef);
+        } else {
+          // -> usuário não é membro: adicionar
+          tx.set(memberRef, {
+            'joinedAt': FieldValue.serverTimestamp(),
+          });
+
+          tx.update(communityRef, {
+            'memberCount': FieldValue.increment(1),
+          });
+
+          // gravar doc simplificado em users/{uid}/savedCommunities/{communityId}
+          tx.set(userSavedRef, {
+            'communityId': widget.communityId,
+            'nome': commName,
+            'imagem': commImage,
+            // memberCount salvo aqui é apenas informativo; a contagem "viva" deve vir do doc communities/{id}
+            'memberCount': currentCount + 1,
+            'joinedAt': FieldValue.serverTimestamp(),
+          });
+        }
       });
-      if (mounted) setState(() => _joined = false);
-    } else {
-      // 🔹 entrar na comunidade
-      await memberRef.set({
-        'joinedAt': FieldValue.serverTimestamp(),
-      });
-      await communityRef.update({
-        'memberCount': FieldValue.increment(1),
-      });
-      if (mounted) {
-        setState(() => _joined = true);
-        Navigator.push(
-          context,
-          MaterialPageRoute(
-            builder: (context) => ChatPage(
-              communityId: widget.communityId!,
-              nomeComunidade: widget.nome ?? 'Comunidade',
-            ),
-          ),
-        );
-      }
+
+      // Se chegou aqui, transação foi bem sucedida -> atualizar UI localmente
+      // re-check para garantir estado consistente
+      final memberDoc = await FirebaseFirestore.instance
+          .collection('communities')
+          .doc(widget.communityId)
+          .collection('members')
+          .doc(_uid)
+          .get();
+      if (!mounted) return;
+      setState(() => _joined = memberDoc.exists);
+
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(_joined
+              ? 'Você entrou na comunidade — boa conversa! 🟢'
+              : 'Você saiu da comunidade.'),
+        ),
+      );
+    } catch (e) {
+      debugPrint('Erro ao (un)join/update saved (transação): $e');
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Erro ao atualizar comunidade: ${e.toString()}')),
+      );
     }
   }
 
