@@ -1,12 +1,24 @@
 import 'package:flutter/material.dart';
 import 'package:webview_flutter/webview_flutter.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:firebase_auth/firebase_auth.dart';
+
 import 'community_detail_page.dart';
 import 'search_page.dart';
 
-class HomeFeedPage extends StatelessWidget {
+class HomeFeedPage extends StatefulWidget {
   const HomeFeedPage({super.key});
 
-  final List<String> videoUrls = const [
+  @override
+  State<HomeFeedPage> createState() => _HomeFeedPageState();
+}
+
+class _HomeFeedPageState extends State<HomeFeedPage> {
+  final FirebaseFirestore _firestore = FirebaseFirestore.instance;
+  final FirebaseAuth _auth = FirebaseAuth.instance;
+
+  // Fallback temporário caso o Firestore esteja vazio
+  final List<String> defaultVideos = const [
     "https://youtube.com/shorts/b3OeMC5iKb8?si=FL5swtMhWM869MGn", // Jiu-Jitsu
     "https://youtube.com/shorts/vc2wRHYr9cc?si=VC8ayj1DkOPQZV-z", // Kung Fu
     "https://youtube.com/shorts/shNivqqCo4Y?si=9dEihEYiVre7tMcr", // Muay Thai
@@ -14,6 +26,19 @@ class HomeFeedPage extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final user = _auth.currentUser;
+    if (user == null) {
+      return const Scaffold(
+        backgroundColor: Colors.black,
+        body: Center(
+          child: Text(
+            "Você precisa estar logado para ver o feed.",
+            style: TextStyle(color: Colors.white, fontSize: 16),
+          ),
+        ),
+      );
+    }
+
     return Scaffold(
       backgroundColor: Colors.black,
       appBar: AppBar(
@@ -31,124 +56,88 @@ class HomeFeedPage extends StatelessWidget {
           ),
         ],
       ),
-      body: PageView.builder(
-        scrollDirection: Axis.vertical,
-        itemCount: videoUrls.length,
-        itemBuilder: (context, index) {
-          final controller = WebViewController()
-            ..setJavaScriptMode(JavaScriptMode.unrestricted)
-            ..loadRequest(Uri.parse(videoUrls[index]));
+      body: StreamBuilder<QuerySnapshot>(
+        stream: _firestore
+            .collection('posts')
+            .where('isForYou', isEqualTo: true)
+            .where('type', isEqualTo: 'video')
+            .orderBy('createdAt', descending: true)
+            .snapshots(),
+        builder: (context, snapshot) {
+          // Erro de conexão ou permissão
+          if (snapshot.hasError) {
+            return const Center(
+              child: Text(
+                'Erro ao carregar vídeos.',
+                style: TextStyle(color: Colors.white),
+              ),
+            );
+          }
 
-          Widget videoWidget = WebViewWidget(controller: controller);
+          // Carregando dados
+          if (snapshot.connectionState == ConnectionState.waiting) {
+            return const Center(
+              child: CircularProgressIndicator(color: Colors.white),
+            );
+          }
 
-          // Vídeo 1 -> Jiu-Jitsu (botão invisível central)
-          if (index == 0) {
-            videoWidget = Stack(
-              children: [
-                WebViewWidget(controller: controller),
-                Align(
-                  alignment: Alignment.center,
-                  child: SizedBox(
-                    width: 80,
-                    height: 80,
-                    child: GestureDetector(
-                      onTap: () {
-                        Navigator.push(
-                          context,
-                          MaterialPageRoute(
-                            builder: (_) => const CommunityDetailPage(
-                              nome: "Jiu-Jitsu",
-                              imagem:
-                                  "https://i.ytimg.com/vi/yiDDwBHLolo/hqdefault.jpg",
-                              descricao:
-                                  "Se você gosta de artes marciais e quer aprender ou melhorar no Jiu-Jitsu, essa comunidade é para você!",
-                              mapsUrl:
-                                  "https://www.google.com/maps/search/?api=1&query=Academia+de+Jiu-Jitsu",
+          final docs = snapshot.data?.docs ?? [];
+
+          // Caso o banco ainda não tenha posts
+          if (docs.isEmpty) {
+            return PageView.builder(
+              scrollDirection: Axis.vertical,
+              itemCount: defaultVideos.length,
+              itemBuilder: (context, index) {
+                final controller = WebViewController()
+                  ..setJavaScriptMode(JavaScriptMode.unrestricted)
+                  ..loadRequest(Uri.parse(defaultVideos[index]));
+                return SafeArea(child: WebViewWidget(controller: controller));
+              },
+            );
+          }
+
+          // Se houver posts, monta o feed dinâmico
+          return PageView.builder(
+            scrollDirection: Axis.vertical,
+            itemCount: docs.length,
+            itemBuilder: (context, index) {
+              final post = docs[index].data() as Map<String, dynamic>;
+              final videoUrl = post['videoUrl'] ?? '';
+              final controller = WebViewController()
+                ..setJavaScriptMode(JavaScriptMode.unrestricted)
+                ..loadRequest(Uri.parse(videoUrl));
+
+              return SafeArea(
+                child: Stack(
+                  children: [
+                    WebViewWidget(controller: controller),
+                    Positioned(
+                      bottom: 40,
+                      left: 20,
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          if (post['authorName'] != null)
+                            Text(
+                              '@${post['authorName']}',
+                              style: const TextStyle(
+                                  color: Colors.white, fontSize: 16),
                             ),
-                          ),
-                        );
-                      },
-                      child: Container(color: Colors.transparent),
-                    ),
-                  ),
-                ),
-              ],
-            );
-          }
-
-          // Vídeo 2 -> Kung Fu (tela toda clicável)
-          if (index == 1) {
-            videoWidget = Stack(
-              children: [
-                WebViewWidget(controller: controller),
-                Positioned.fill(
-                  child: GestureDetector(
-                    behavior: HitTestBehavior.opaque,
-                    onTap: () {
-                      Navigator.push(
-                        context,
-                        MaterialPageRoute(
-                          builder: (_) => const CommunityDetailPage(
-                            nome: "Kung Fu",
-                            imagem:
-                                "https://fator01.wordpress.com/wp-content/uploads/2011/04/brucelee.jpg?w=400",
-                            descricao:
-                                "Comunidade para praticantes e fãs de Kung Fu. Aprenda técnicas e troque experiências.",
-                            imagens: [
-                              "https://fotos.perfil.com/2020/11/27/la-camara-36-de-shaolin-1087690.jpg"
-                            ],
-                            mapsUrl:
-                                "https://www.google.com/maps/search/?api=1&query=Academia+de+Kung+Fu",
-                          ),
-                        ),
-                      );
-                    },
-                  ),
-                ),
-              ],
-            );
-          }
-
-          // Vídeo 3 -> Muay Thai (apenas clique no centro)
-          if (index == 2) {
-            videoWidget = Stack(
-              children: [
-                WebViewWidget(controller: controller),
-                Align(
-                  alignment: Alignment.center,
-                  child: SizedBox(
-                    width: 120,
-                    height: 120,
-                    child: GestureDetector(
-                      onTap: () {
-                        Navigator.push(
-                          context,
-                          MaterialPageRoute(
-                            builder: (_) => const CommunityDetailPage(
-                              nome: "Muay Thai",
-                              imagem:
-                                  "https://lh3.googleusercontent.com/gps-cs-s/AC9h4npPOdbYg1E6i9BGQ2KhEc0qmTGcOsFe4ol87EgBO84QaJKiTkS0N-wfMTfqHkcwglQzgQMMiH8mtZq8EQUqDZCJD3JiPVoRxBOxn6YEBjrXIG_grdF0sH1QQ8kkibuUs4T2ArMn=s680-w680-h510-rw",
-                              descricao:
-                                  "Treinamentos, técnicas e condicionamento para Muay Thai.",
-                              imagens: [
-                                "https://lh3.googleusercontent.com/gps-cs-s/AC9h4npPOdbYg1E6i9BGQ2KhEc0qmTGcOsFe4ol87EgBO84QaJKiTkS0N-wfMTfqHkcwglQzgQMMiH8mtZq8EQUqDZCJD3JiPVoRxBOxn6YEBjrXIG_grdF0sH1QQ8kkibuUs4T2ArMn=s680-w680-h510-rw",
-                                "https://lh3.googleusercontent.com/gps-cs-s/AC9h4nrliA5f__lFtbNHJS44g09OHwHP2Wq3kWKGjPH06EMShaOVSaIJ9xuCmh7VXTShI8bqvzPdj8-44pD7ryaOKrBvI8gKN581Oqr4-KaRmj8_ZgiANNmfbnXRAoc_redKSwFVEkjb=s680-w680-h510-rw"
-                              ],
-                              mapsUrl:
-                                  "https://www.google.com/maps/search/?api=1&query=Academia+de+Muay+Thai",
+                          if (post['caption'] != null)
+                            Text(
+                              post['caption'],
+                              style: const TextStyle(
+                                  color: Colors.white70, fontSize: 14),
                             ),
-                          ),
-                        );
-                      },
-                      child: Container(color: Colors.transparent),
+                        ],
+                      ),
                     ),
-                  ),
+                  ],
                 ),
-              ],
-            );
-          }
-
-          return SafeArea(child: videoWidget);
+              );
+            },
+          );
         },
       ),
     );
