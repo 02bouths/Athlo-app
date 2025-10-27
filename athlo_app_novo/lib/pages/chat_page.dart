@@ -2,6 +2,7 @@
 import 'dart:io';
 import 'dart:typed_data';
 
+import 'community_admin_page.dart';
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:chewie/chewie.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
@@ -86,11 +87,96 @@ class _ChatPageState extends State<ChatPage> {
   }
 
   Future<void> _ensureSignedInAnonymously() async {
-    final auth = FirebaseAuth.instance;
-    if (auth.currentUser == null) {
-      await auth.signInAnonymously();
-    }
+  final auth = FirebaseAuth.instance;
+  User? user;
+
+  // 🔎 Garante que existe um usuário auth (anônimo se necessário)
+  if (auth.currentUser == null) {
+    final userCred = await auth.signInAnonymously();
+    user = userCred.user;
+  } else {
+    user = auth.currentUser;
   }
+
+  if (user == null) return;
+
+  final memberRef = FirebaseFirestore.instance
+      .collection('communities')
+      .doc(widget.communityId)
+      .collection('members')
+      .doc(user.uid);
+
+  final memberDoc = await memberRef.get();
+
+  // NÃO recriar automático o memberDoc: se não existe, o usuário não é membro.
+  if (!memberDoc.exists) {
+    // usuário não é membro — não permitir acesso automático ao chat.
+    if (!mounted) return;
+
+    // mostra feedback e volta (pode mudar para navegar pra uma rota específica)
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(content: Text('Você não é membro desta comunidade. Toque em Entrar para participar.')),
+    );
+
+    // navega pra trás (fecha ChatPage)
+    Navigator.of(context).maybePop();
+    return;
+  }
+
+  // Se existir, tudo ok — carrega meta (mantém o resto do fluxo)
+  // (Se você tiver mais inicializações que dependem do membro, coloque aqui)
+}
+
+Future<void> _sairDaComunidade() async {
+  final uid = FirebaseAuth.instance.currentUser?.uid;
+  if (uid == null) return;
+
+  final communityRef =
+      FirebaseFirestore.instance.collection('communities').doc(widget.communityId);
+  final memberRef = communityRef.collection('members').doc(uid);
+  final userSavedRef = FirebaseFirestore.instance
+      .collection('users')
+      .doc(uid)
+      .collection('savedCommunities')
+      .doc(widget.communityId);
+
+  try {
+    await FirebaseFirestore.instance.runTransaction((tx) async {
+      tx.delete(memberRef);
+      tx.delete(userSavedRef);
+      tx.update(communityRef, {
+        'memberCount': FieldValue.increment(-1),
+      });
+    });
+
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(content: Text('Você saiu da comunidade.')),
+    );
+    Navigator.of(context).pop(); // 🔹 Fecha o chat
+  } catch (e) {
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(content: Text('Erro ao sair: $e')),
+    );
+  }
+}
+
+  Future<bool> isCurrentUserAdmin() async {
+  final user = FirebaseAuth.instance.currentUser;
+  if (user == null) return false;
+
+  final doc = await FirebaseFirestore.instance
+      .collection('communities')
+      .doc(widget.communityId)
+      .get();
+
+  final data = doc.data();
+  if (data == null) return false;
+
+  final admins = List<String>.from(data['admins'] ?? []);
+    return admins.contains(user.uid);
+  }
+
 
   Future<void> _loadCommunityMeta() async {
   try {
@@ -158,69 +244,91 @@ class _ChatPageState extends State<ChatPage> {
     return 'Usuário';
   }
 
-  Future<void> _enviarMensagem({
-    String? text,
-    String? imageUrl,
-    String? videoUrl,
-    String? videoThumbUrl,
-    String? audioUrl,
-  }) async {
-    if ((text == null || text.trim().isEmpty) && imageUrl == null && videoUrl == null && audioUrl == null) return;
-    if (FirebaseAuth.instance.currentUser == null) await _ensureSignedInAnonymously();
+Future<void> _enviarMensagem({
+  String? text,
+  String? imageUrl,
+  String? videoUrl,
+  String? videoThumbUrl,
+  String? audioUrl,
+}) async {
+  if ((text == null || text.trim().isEmpty) &&
+      imageUrl == null &&
+      videoUrl == null &&
+      audioUrl == null) return;
 
-    final senderName = await _getSenderName();
-    final sender = FirebaseAuth.instance.currentUser!;
+  if (FirebaseAuth.instance.currentUser == null) {
+    await _ensureSignedInAnonymously();
+  }
+
+  final senderName = await _getSenderName();
+  final sender = FirebaseAuth.instance.currentUser!;
+
+  try {
+    String? senderPhoto;
+    try {
+      final doc = await FirebaseFirestore.instance
+          .collection('users')
+          .doc(sender.uid)
+          .get();
+      senderPhoto = (doc.data()?['fotoPerfil'] as String?) ?? null;
+    } catch (_) {
+      senderPhoto = null;
+    }
+
+    final Map<String, dynamic> payload = {
+      'text': text,
+      'imageUrl': imageUrl,
+      'videoUrl': videoUrl,
+      'videoThumbUrl': videoThumbUrl,
+      'audioUrl': audioUrl,
+      'senderId': sender.uid,
+      'senderName': senderName,
+      'senderPhoto': senderPhoto,
+      'timestamp': FieldValue.serverTimestamp(),
+    };
 
     try {
-      String? senderPhoto;
-      try {
-        final doc = await FirebaseFirestore.instance.collection('users').doc(sender.uid).get();
-        senderPhoto = (doc.data()?['fotoPerfil'] as String?) ?? null;
-      } catch (_) {
-        senderPhoto = null;
-      }
-
-      final Map<String, dynamic> payload = {
-        'text': text,
-        'imageUrl': imageUrl,
-        'videoUrl': videoUrl,
-        'videoThumbUrl': videoThumbUrl,
-        'audioUrl': audioUrl,
-        'senderId': sender.uid,
-        'senderName': senderName,
-        'senderPhoto': senderPhoto,
-        'timestamp': FieldValue.serverTimestamp(),
-      };
-
       await FirebaseFirestore.instance
           .collection('communities')
           .doc(widget.communityId)
           .collection('messages')
           .add(payload);
 
-          // 🔹 Atualiza informações no documento da comunidade
-try {
-  final communityRef = FirebaseFirestore.instance
-      .collection('communities')
-      .doc(widget.communityId);
+      // 🔹 Atualiza informações no documento da comunidade
+      try {
+        final communityRef = FirebaseFirestore.instance
+            .collection('communities')
+            .doc(widget.communityId);
 
-  await communityRef.update({
-    'lastMessage': text ?? '[mídia]',
-    'lastMessageTime': FieldValue.serverTimestamp(),
-    'messageCount': FieldValue.increment(1),
-  });
-} catch (e) {
-  debugPrint('Erro ao atualizar metadados da comunidade: $e');
-}
-
+        await communityRef.update({
+          'lastMessage': text ?? '[mídia]',
+          'lastMessageTime': FieldValue.serverTimestamp(),
+          'messageCount': FieldValue.increment(1),
+        });
+      } catch (e) {
+        debugPrint('Erro ao atualizar metadados da comunidade: $e');
+      }
 
       _controller.clear();
       _focusNode.requestFocus();
-    } catch (e) {
-      if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Erro ao enviar: $e')));
+    } on FirebaseException catch (e) {
+      if (e.code == 'permission-denied') {
+        if (!mounted) return;
+        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+          content: Text('Sem permissão para enviar mensagens — você pode não ser mais membro desta comunidade.'),
+        ));
+        Navigator.of(context).maybePop();
+        return;
+      }
+      rethrow;
     }
+  } catch (e) {
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(content: Text('Erro ao enviar: $e')),
+    );
   }
+}
 
   /// Retorna contentType baseado na extensão / MIME sniffing
   String _contentTypeFromPath(String path, {String? fallback}) {
@@ -608,7 +716,7 @@ try {
     print('🆔 communityId recebido: ${widget.communityId}');
     return Scaffold(
       backgroundColor: kBodyBackground,
-      appBar: AppBar(
+ appBar: AppBar(
   backgroundColor: kAppBarColor,
   elevation: 0,
   leading: IconButton(
@@ -616,103 +724,139 @@ try {
     onPressed: () => Navigator.of(context).pop(),
   ),
   titleSpacing: 0,
-title: StreamBuilder<DocumentSnapshot>(
- stream: FirebaseFirestore.instance
-      .collection('communities')
-      .doc(widget.communityId)
-      .snapshots(),
-  builder: (context, snapshot) {
-    if (!snapshot.hasData || !snapshot.data!.exists) {
-      return Row(
+
+  // 🔹 Exibe o nome, imagem e contador de membros
+  title: StreamBuilder<DocumentSnapshot>(
+    stream: FirebaseFirestore.instance
+        .collection('communities')
+        .doc(widget.communityId)
+        .snapshots(),
+    builder: (context, snapshot) {
+      if (!snapshot.hasData) {
+        return const Text('Carregando...', style: TextStyle(color: Colors.white));
+      }
+
+      if (!snapshot.data!.exists) {
+        return const Text('Comunidade não encontrada', style: TextStyle(color: Colors.white));
+      }
+
+      final data = snapshot.data!.data() as Map<String, dynamic>? ?? {};
+      final photoUrl = (data['imagem'] ?? data['photo']) as String?;
+      final ownerId = (data['ownerId'] ?? data['creatorId'] ?? '') as String;
+      final adminsList = (data['admins'] is List)
+          ? (data['admins'] as List).cast<String>()
+          : <String>[];
+
+      final uid = FirebaseAuth.instance.currentUser?.uid;
+      final bool isAdmin = uid != null && (uid == ownerId || adminsList.contains(uid));
+
+      // Contagem de membros
+      final membersField = data['members'];
+      int memberCount = 0;
+      if (membersField is List) {
+        memberCount = membersField.length;
+      } else if (membersField is Map) {
+        memberCount = membersField.length;
+      } else if (data['memberCount'] is int) {
+        memberCount = data['memberCount'];
+      }
+
+      // 🔹 Layout do cabeçalho
+      Widget communityInfo = Row(
         children: [
           const SizedBox(width: 6),
-          Container(
-            width: 36,
-            height: 36,
-            decoration: BoxDecoration(
-              color: kCommunityAvatarBg,
-              borderRadius: BorderRadius.circular(8),
+          ClipRRect(
+            borderRadius: BorderRadius.circular(8),
+            child: Container(
+              width: 36,
+              height: 36,
+              color: photoUrl != null ? Colors.transparent : kCommunityAvatarBg,
+              child: (photoUrl != null && photoUrl.isNotEmpty)
+                  ? CachedNetworkImage(
+                      imageUrl: photoUrl,
+                      fit: BoxFit.cover,
+                      placeholder: (_, __) => Container(color: Colors.grey.shade700),
+                      errorWidget: (_, __, ___) =>
+                          const Icon(Icons.broken_image, color: Colors.white),
+                    )
+                  : const Icon(Icons.people, color: Colors.white, size: 20),
             ),
           ),
           const SizedBox(width: 12),
-          const Column(
+          Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               Text(
-                'Carregando...',
-                style: TextStyle(
-                    fontSize: 16,
-                    fontWeight: FontWeight.bold,
-                    color: Colors.white),
+                (data['nome'] as String?) ?? widget.nomeComunidade,
+                style: const TextStyle(
+                  fontSize: 16,
+                  fontWeight: FontWeight.bold,
+                  color: Colors.white,
+                ),
               ),
               Text(
-                'carregando...',
-                style: TextStyle(fontSize: 12, color: kMemberCountColor),
+                '$memberCount membros',
+                style: const TextStyle(fontSize: 12, color: kMemberCountColor),
               ),
             ],
           ),
         ],
       );
-    }
 
-    final data = snapshot.data!.data() as Map<String, dynamic>? ?? {};
-    // 🔹 campo correto para imagem da comunidade
-    final photoUrl = data['imagem']; 
-    final membersField = data['members'];
-    int memberCount = 0;
-    if (membersField is List) {
-      memberCount = membersField.length;
-    } else if (membersField is Map) {
-      memberCount = membersField.length;
-    } else if (data['memberCount'] is int) {
-      memberCount = data['memberCount'];
-    }
-
-    return Row(
-      children: [
-        const SizedBox(width: 6),
-        ClipRRect(
-          borderRadius: BorderRadius.circular(8),
-          child: Container(
-            width: 36,
-            height: 36,
-            color: photoUrl != null ? Colors.transparent : kCommunityAvatarBg,
-            child: photoUrl != null && photoUrl.toString().isNotEmpty
-                ? CachedNetworkImage(
-                    imageUrl: photoUrl,
-                    fit: BoxFit.cover,
-                    placeholder: (_, __) => Container(
-                      color: Colors.grey.shade700,
-                    ),
-                    errorWidget: (_, __, ___) =>
-                        const Icon(Icons.broken_image, color: Colors.white),
-                  )
-                : const Icon(Icons.people, color: Colors.white, size: 20),
-          ),
-        ),
-        const SizedBox(width: 12),
-        Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text(
-              widget.nomeComunidade,
-              style: const TextStyle(
-                fontSize: 16,
-                fontWeight: FontWeight.bold,
-                color: Colors.white,
+      // 🔹 Se for admin, o título leva ao painel
+      if (isAdmin) {
+        return InkWell(
+          onTap: () {
+            Navigator.push(
+              context,
+              MaterialPageRoute(
+                builder: (_) => CommunityAdminPage(
+                  communityId: widget.communityId,
+                ),
               ),
-            ),
-            Text(
-              '$memberCount membros',
-              style:
-                  const TextStyle(fontSize: 12, color: kMemberCountColor),
-            ),
-          ],
-        ),
-      ],
-    );
-  },
-),
+            );
+          },
+          child: communityInfo,
+        );
+      }
+
+      // 🔹 Caso contrário, apenas exibe info
+      return communityInfo;
+    },
+  ),
+
+  // 🔹 Botão "Sair" (somente para membros comuns)
+  actions: [
+    StreamBuilder<DocumentSnapshot>(
+      stream: FirebaseFirestore.instance
+          .collection('communities')
+          .doc(widget.communityId)
+          .snapshots(),
+      builder: (context, snap) {
+        if (!snap.hasData || !snap.data!.exists) {
+          return const SizedBox.shrink();
+        }
+
+        final data = snap.data!.data() as Map<String, dynamic>? ?? {};
+        final uid = FirebaseAuth.instance.currentUser?.uid;
+        final ownerId = (data['ownerId'] ?? data['creatorId'] ?? '') as String;
+        final admins = (data['admins'] is List)
+            ? (data['admins'] as List).cast<String>()
+            : <String>[];
+
+        // 🔹 Mostra botão "Sair" apenas se NÃO for dono nem admin
+        if (uid == null || uid == ownerId || admins.contains(uid)) {
+          return const SizedBox.shrink();
+        }
+
+        return IconButton(
+          icon: const Icon(Icons.exit_to_app, color: Colors.white),
+          tooltip: 'Sair da comunidade',
+          onPressed: _sairDaComunidade,
+        );
+      },
+    ),
+  ],
 ),
       body: Column(
         children: [
@@ -920,6 +1064,8 @@ class _AudioBubbleState extends State<_AudioBubble> {
     }
     if (mounted) setState(() => _playing = !_playing);
   }
+
+
 
   @override
   Widget build(BuildContext context) {

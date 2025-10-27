@@ -79,71 +79,91 @@ class _CreateCommunityPageState extends State<CreateCommunityPage> {
   }
 
   Future<void> _criarComunidade() async {
-    final nome = _nomeController.text.trim();
-    final descricao = _descricaoController.text.trim();
+  final nome = _nomeController.text.trim();
+  final descricao = _descricaoController.text.trim();
 
-    if (nome.isEmpty || descricao.isEmpty) {
-      _showDialog("Campos obrigatórios", "Preencha o nome e a descrição da comunidade.");
-      return;
-    }
-
-    if (imagemPrincipal == null) {
-      _showDialog("Imagem principal", "Selecione a foto principal da comunidade.");
-      return;
-    }
-
-    if (imagensExtras.length < 3) {
-      _showDialog("Fotos adicionais", "Adicione pelo menos 3 fotos para a comunidade.");
-      return;
-    }
-
-    final user = FirebaseAuth.instance.currentUser;
-    if (user == null) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text("Você precisa estar logado para criar uma comunidade.")),
-      );
-      return;
-    }
-
-    setState(() => _isUploading = true);
-
-    try {
-      final imagemPrincipalUrl = await _uploadImagemParaStorage(imagemPrincipal!);
-
-      List<String> imagensExtrasUrls = [];
-      for (final img in imagensExtras) {
-        final url = await _uploadImagemParaStorage(img);
-        if (url != null) imagensExtrasUrls.add(url);
-      }
-
-      // 🔹 Criação da comunidade com contagem inicial de membros
-      await FirebaseFirestore.instance.collection('communities').add({
-        "nome": nome,
-        "tipo": _tipoEsporteController.text.trim(),
-        "endereco": _enderecoController.text.trim(),
-        "descricao": descricao,
-        "imagem": imagemPrincipalUrl ?? "",
-        "imagensExtras": imagensExtrasUrls,
-        "criadoEm": FieldValue.serverTimestamp(),
-        "criadoPor": user.uid,
-        "memberCount": 0, // contador inicial
-        "members": [], // lista vazia, será atualizada quando alguém entrar
-      });
-
-      setState(() => _isUploading = false);
-
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text("Comunidade criada com sucesso!")),
-        );
-        Navigator.pop(context);
-      }
-    } catch (e) {
-      debugPrint('❌ Erro ao criar comunidade: $e');
-      setState(() => _isUploading = false);
-      _showDialog("Erro", "Falha ao criar comunidade: $e");
-    }
+  if (nome.isEmpty || descricao.isEmpty) {
+    _showDialog("Campos obrigatórios", "Preencha o nome e a descrição da comunidade.");
+    return;
   }
+
+  if (imagemPrincipal == null) {
+    _showDialog("Imagem principal", "Selecione a foto principal da comunidade.");
+    return;
+  }
+
+  if (imagensExtras.length < 3) {
+    _showDialog("Fotos adicionais", "Adicione pelo menos 3 fotos para a comunidade.");
+    return;
+  }
+
+  final user = FirebaseAuth.instance.currentUser;
+  if (user == null) {
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(content: Text("Você precisa estar logado para criar uma comunidade.")),
+    );
+    return;
+  }
+
+  setState(() => _isUploading = true);
+
+  try {
+  final imagemPrincipalUrl = await _uploadImagemParaStorage(imagemPrincipal!);
+
+  List<String> imagensExtrasUrls = [];
+  for (final img in imagensExtras) {
+    final url = await _uploadImagemParaStorage(img);
+    if (url != null) imagensExtrasUrls.add(url);
+  }
+
+  // 🔹 Criação da comunidade com campos administrativos completos
+  final communityRef = await FirebaseFirestore.instance.collection('communities').add({
+    "nome": nome,
+    "tipo": _tipoEsporteController.text.trim(),
+    "endereco": _enderecoController.text.trim(),
+    "descricao": descricao,
+    "imagem": imagemPrincipalUrl ?? "",
+    "imagensExtras": imagensExtrasUrls,
+    "criadoEm": FieldValue.serverTimestamp(),
+    "criadoPor": user.uid,
+    "ownerId": user.uid, // 👑 dono original
+    "admins": [user.uid], // 👥 criador como admin
+    "memberCount": 1, // 📊 já conta o criador
+    "members": [user.uid], // 🧩 lista principal de membros
+  });
+
+  // 🔹 Subcoleção "members" para controle detalhado
+  await FirebaseFirestore.instance
+      .collection('communities')
+      .doc(communityRef.id)
+      .collection('members')
+      .doc(user.uid)
+      .set({
+    'userId': user.uid,
+    'joinedAt': FieldValue.serverTimestamp(),
+    'displayName': user.displayName ?? 'Administrador',
+    'photoUrl': user.photoURL,
+  });
+
+  debugPrint('✅ Comunidade criada com admin e membro: ${user.uid}');
+
+  setState(() => _isUploading = false);
+
+  if (mounted) {
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(content: Text("Comunidade criada com sucesso!")),
+    );
+    Navigator.pop(context);
+  }
+} catch (e) {
+  debugPrint('❌ Erro ao criar comunidade: $e');
+  setState(() => _isUploading = false);
+  _showDialog("Erro", "Falha ao criar comunidade: $e");
+}
+}
+
+
+
 
   void _showDialog(String titulo, String mensagem) {
     showDialog(

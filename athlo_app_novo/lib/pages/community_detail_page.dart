@@ -360,33 +360,6 @@ class _CommunityDetailPageState extends State<CommunityDetailPage> {
     );
   }
 
-  Widget _buildAdminControls() {
-    if (!(isOwner || isAdmin)) return const SizedBox.shrink();
-
-    return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 8),
-      child: Center(
-        child: Column(
-          children: [
-            const Text(
-              'Controles de Administração',
-              style: TextStyle(fontWeight: FontWeight.bold, color: Colors.black),
-            ),
-            const SizedBox(height: 8),
-            ElevatedButton(
-              onPressed: () => _makeAdmin('testeUser123'),
-              child: const Text('Tornar alguém admin'),
-            ),
-            ElevatedButton(
-              onPressed: () => _removeAdmin('testeUser123'),
-              child: const Text('Remover admin'),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-
   Widget _buildMapsButton(String url) {
     return Padding(
       padding: const EdgeInsets.symmetric(vertical: 8),
@@ -440,7 +413,6 @@ class _CommunityDetailPageState extends State<CommunityDetailPage> {
             _buildDescription(descricao),
             _buildImagesCarousel(imagensExtras, imagem),
             _buildSubscribeButton(),
-            _buildAdminControls(),
             if (mapsUrl != null && mapsUrl.isNotEmpty) _buildMapsButton(mapsUrl),
             const SizedBox(height: 16),
           ],

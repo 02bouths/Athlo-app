@@ -132,6 +132,10 @@ class _SavedCommunitiesPageState extends State<SavedCommunitiesPage> {
                         final commData =
                             commDoc.data() as Map<String, dynamic>? ?? {};
 
+                        // ✅ Atualiza nome e imagem com dados reais do Firestore
+                        final commNome = (commData['nome'] ?? nome).toString();
+                        final commImagem = (commData['imagem'] ?? imagem).toString();
+
                         int memberCount = 0;
                         if (commData['memberCount'] is int) {
                           memberCount = commData['memberCount'] as int;
@@ -173,21 +177,55 @@ class _SavedCommunitiesPageState extends State<SavedCommunitiesPage> {
 
                             return InkWell(
                               onTap: () async {
+                                final currentUser = FirebaseAuth.instance.currentUser;
+                                if (currentUser == null) {
+                                  ScaffoldMessenger.of(context).showSnackBar(
+                                    const SnackBar(
+                                        content: Text('Faça login para abrir a comunidade.')),
+                                  );
+                                  return;
+                                }
+
                                 try {
+                                  // verifica se ainda é membro
+                                  final memberDoc = await FirebaseFirestore.instance
+                                      .collection('communities')
+                                      .doc(commId)
+                                      .collection('members')
+                                      .doc(currentUser.uid)
+                                      .get();
+
+                                  if (!memberDoc.exists) {
+                                    // usuário não é mais membro — tenta deletar savedCommunities localmente
+                                    try {
+                                      await userSavedRef.delete();
+                                    } catch (_) {}
+                                    ScaffoldMessenger.of(context).showSnackBar(
+                                      const SnackBar(
+                                          content: Text('Você não é mais membro desta comunidade.')),
+                                    );
+                                    return;
+                                  }
+
+                                  // se é membro, atualiza lastReadAt e navega
                                   await userSavedRef.set({
                                     'lastReadAt': FieldValue.serverTimestamp(),
                                   }, SetOptions(merge: true));
-                                } catch (_) {}
 
-                                Navigator.push(
-                                  context,
-                                  MaterialPageRoute(
-                                    builder: (_) => ChatPage(
-                                      communityId: commId,
-                                      nomeComunidade: nome,
+                                  Navigator.push(
+                                    context,
+                                    MaterialPageRoute(
+                                      builder: (_) => ChatPage(
+                                        communityId: commId,
+                                        nomeComunidade: commNome, // ✅ usa o nome atualizado
+                                      ),
                                     ),
-                                  ),
-                                );
+                                  );
+                                } catch (e) {
+                                  ScaffoldMessenger.of(context).showSnackBar(
+                                    SnackBar(content: Text('Erro ao verificar membro: $e')),
+                                  );
+                                }
                               },
                               borderRadius: BorderRadius.circular(12),
                               child: Container(
@@ -200,9 +238,9 @@ class _SavedCommunitiesPageState extends State<SavedCommunitiesPage> {
                                   children: [
                                     ClipRRect(
                                       borderRadius: BorderRadius.circular(8),
-                                      child: imagem.isNotEmpty
+                                      child: commImagem.isNotEmpty
                                           ? Image.network(
-                                              imagem,
+                                              commImagem,
                                               width: 56,
                                               height: 56,
                                               fit: BoxFit.cover,
@@ -224,7 +262,7 @@ class _SavedCommunitiesPageState extends State<SavedCommunitiesPage> {
                                             CrossAxisAlignment.start,
                                         children: [
                                           Text(
-                                            nome,
+                                            commNome,
                                             style: const TextStyle(
                                               color: Colors.white,
                                               fontWeight: FontWeight.bold,
