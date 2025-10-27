@@ -1,6 +1,8 @@
 // lib/pages/community_admin_page.dart
 import 'dart:io';
 
+import 'package:athlo_app_novo/shared/theme.dart'; // ajuste o caminho conforme sua estrutura
+
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:cloud_functions/cloud_functions.dart';
 import 'package:firebase_auth/firebase_auth.dart';
@@ -30,12 +32,7 @@ class _CommunityAdminPageState extends State<CommunityAdminPage> {
   String? _uid;
   bool _loadingAction = false;
 
-  // Paleta de cores
-  static const Color kPrimary = Color(0xFF595643);
-  static const Color kGreen = Color(0xFF4E6B66);
-  static const Color kAccent = Color(0xFFED834E);
-  static const Color kYellow = Color(0xFFEBCC6E);
-  static const Color kLight = Color(0xFFEBE1C5);
+  // Palet
 
   final Map<String, Map<String, String>> _profileCache = {};
 
@@ -87,27 +84,52 @@ class _CommunityAdminPageState extends State<CommunityAdminPage> {
     _profileCache[userId] = result;
     return result;
   }
-
-  Future<void> _promoteToAdmin(String userId, Map<String, dynamic>? commData) async {
-    if (!_isOwner(commData)) {
-      ScaffoldMessenger.of(context)
-          .showSnackBar(const SnackBar(content: Text('Apenas o dono pode promover admins.')));
-      return;
-    }
-    setState(() => _loadingAction = true);
-    try {
-      await _db.collection('communities').doc(widget.communityId).update({
-        'admins': FieldValue.arrayUnion([userId]),
-      });
-      ScaffoldMessenger.of(context)
-          .showSnackBar(const SnackBar(content: Text('Usuário promovido a admin.')));
-    } catch (e) {
-      ScaffoldMessenger.of(context)
-          .showSnackBar(SnackBar(content: Text('Erro ao promover: $e')));
-    } finally {
-      setState(() => _loadingAction = false);
-    }
+Future<void> _promoteToAdmin(String userId, Map<String, dynamic>? commData) async {
+  if (!_isOwner(commData)) {
+    ScaffoldMessenger.of(context)
+        .showSnackBar(const SnackBar(content: Text('Apenas o dono pode promover admins.')));
+    return;
   }
+
+  if (widget.communityId == null) return;
+
+  setState(() => _loadingAction = true);
+  try {
+    final commRef = _db.collection('communities').doc(widget.communityId);
+
+    // Atualiza o campo de admins
+    await commRef.update({
+      'admins': FieldValue.arrayUnion([userId]),
+    });
+
+    // Busca o nome do usuário promovido
+    final userDoc = await _db.collection('users').doc(userId).get();
+    final promotedName = (userDoc.data()?['nome'] as String?) ?? 'Usuário';
+
+    // Envia mensagem de sistema ao chat
+    await commRef.collection('messages').add({
+      'text': '🔧 $promotedName agora é administrador da comunidade.',
+      'senderId': 'system',
+      'senderName': 'Sistema',
+      'system': true,
+      'timestamp': FieldValue.serverTimestamp(),
+    });
+
+    // Atualiza lastMessage e lastMessageTime
+    await commRef.update({
+      'lastMessage': '🔧 $promotedName agora é administrador da comunidade.',
+      'lastMessageTime': FieldValue.serverTimestamp(),
+    });
+
+    ScaffoldMessenger.of(context)
+        .showSnackBar(const SnackBar(content: Text('Usuário promovido a admin.')));
+  } catch (e) {
+    ScaffoldMessenger.of(context)
+        .showSnackBar(SnackBar(content: Text('Erro ao promover: $e')));
+  } finally {
+    setState(() => _loadingAction = false);
+  }
+}
 
   Future<void> _removeAdmin(String userId, Map<String, dynamic>? commData) async {
     setState(() => _loadingAction = true);
@@ -299,16 +321,32 @@ class _CommunityAdminPageState extends State<CommunityAdminPage> {
 
     final controller = TextEditingController(text: currentName);
     final res = await showDialog<String?>(
-      context: context,
-      builder: (_) => AlertDialog(
-        title: const Text('Editar nome da comunidade'),
-        content: TextField(controller: controller, decoration: const InputDecoration(hintText: 'Novo nome')),
-        actions: [
-          TextButton(onPressed: () => Navigator.pop(context), child: const Text('Cancelar')),
-          ElevatedButton(onPressed: () => Navigator.pop(context, controller.text.trim()), child: const Text('Salvar')),
-        ],
+  context: context,
+  builder: (_) => AlertDialog(
+    backgroundColor: Colors.white,
+    titleTextStyle: const TextStyle(
+      color: AppPalette.primary,
+      fontWeight: FontWeight.bold,
+      fontSize: 18,
+    ),
+    contentTextStyle: const TextStyle(color: Colors.black87, fontSize: 14),
+    title: const Text('Editar nome da comunidade'),
+    content: TextField(
+      controller: controller,
+      decoration: const InputDecoration(hintText: 'Novo nome'),
+    ),
+    actions: [
+      TextButton(
+        onPressed: () => Navigator.pop(context),
+        child: const Text('Cancelar', style: TextStyle(color: AppPalette.primary)),
       ),
-    );
+      TextButton(
+        onPressed: () => Navigator.pop(context, controller.text.trim()),
+        child: const Text('Salvar', style: TextStyle(color: AppPalette.accent)),
+      ),
+    ],
+  ),
+);
 
     if (res != null && res.isNotEmpty) {
       setState(() => _loadingAction = true);
@@ -412,6 +450,12 @@ class _CommunityAdminPageState extends State<CommunityAdminPage> {
           }
 
           return AlertDialog(
+           backgroundColor: Colors.white,
+              titleTextStyle: const TextStyle(
+              color: AppPalette.primary,
+              fontWeight: FontWeight.bold,
+              fontSize: 18,
+            ),
             title: const Text('Gerenciar carrossel (detalhes)'),
             content: SizedBox(
               width: double.maxFinite,
@@ -441,7 +485,7 @@ class _CommunityAdminPageState extends State<CommunityAdminPage> {
                             leading: SizedBox(width: 64, height: 64, child: Image.network(u, fit: BoxFit.cover, errorBuilder: (_, __, ___) => const Icon(Icons.broken_image))),
                             title: Text('Imagem ${index + 1}'),
                             trailing: IconButton(
-                              icon: const Icon(Icons.delete, color: Colors.red),
+                              icon: const Icon(Icons.delete, color: AppPalette.accent),
                               onPressed: () => _removeAt(index),
                             ),
                           );
@@ -453,7 +497,7 @@ class _CommunityAdminPageState extends State<CommunityAdminPage> {
                     onPressed: _pickAndUpload,
                     icon: const Icon(Icons.add_photo_alternate),
                     label: const Text('Adicionar imagem'),
-                    style: ElevatedButton.styleFrom(backgroundColor: kPrimary),
+                    style: ElevatedButton.styleFrom(backgroundColor: AppPalette.primary),
                   ),
                 ],
               ),
@@ -513,13 +557,26 @@ class _CommunityAdminPageState extends State<CommunityAdminPage> {
     final confirm = await showDialog<bool>(
       context: context,
       builder: (ctx) => AlertDialog(
-        title: const Text('Sair da comunidade'),
-        content: const Text('Tem certeza de que deseja sair desta comunidade?'),
-        actions: [
-          TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('Cancelar')),
-          TextButton(onPressed: () => Navigator.pop(ctx, true), child: const Text('Sair')),
-        ],
-      ),
+  backgroundColor: Colors.white,
+  titleTextStyle: const TextStyle(
+    color: AppPalette.primary,
+    fontWeight: FontWeight.bold,
+    fontSize: 18,
+  ),
+  contentTextStyle: const TextStyle(color: Colors.black87, fontSize: 14),
+  title: const Text('Sair da comunidade'),
+  content: const Text('Tem certeza de que deseja sair desta comunidade?'),
+  actions: [
+    TextButton(
+      onPressed: () => Navigator.pop(ctx, false),
+      child: const Text('Cancelar', style: TextStyle(color: AppPalette.primary)),
+    ),
+    TextButton(
+      onPressed: () => Navigator.pop(ctx, true),
+      child: const Text('Sair', style: TextStyle(color: AppPalette.accent)),
+    ),
+  ],
+),
     );
 
     if (confirm != true) return;
@@ -607,7 +664,7 @@ class _CommunityAdminPageState extends State<CommunityAdminPage> {
     return Scaffold(
       backgroundColor: Colors.white,
       appBar: AppBar(
-        backgroundColor: kPrimary,
+        backgroundColor: AppPalette.primary,
         title: Text(widget.communityName ?? 'Painel da Comunidade', style: const TextStyle(color: Colors.white)),
         iconTheme: const IconThemeData(color: Colors.white),
       ),
@@ -654,7 +711,7 @@ class _CommunityAdminPageState extends State<CommunityAdminPage> {
                                   width: 34,
                                   height: 34,
                                   decoration: BoxDecoration(
-                                    color: kAccent,
+                                    color: AppPalette.accent,
                                     shape: BoxShape.circle,
                                     border: Border.all(color: Colors.white, width: 2),
                                   ),
@@ -682,25 +739,25 @@ class _CommunityAdminPageState extends State<CommunityAdminPage> {
                               ),
                               if (amIOwner)
                                 IconButton(
-                                  icon: const Icon(Icons.edit, color: kPrimary),
+                                  icon: const Icon(Icons.edit, color: AppPalette.primary),
                                   onPressed: () => _editName(communityName, commData),
                                   tooltip: 'Editar nome',
                                 ),
                               if (amIOwner)
                                 IconButton(
-                                  icon: const Icon(Icons.photo_library, color: kPrimary),
+                                  icon: const Icon(Icons.photo_library, color: AppPalette.primary),
                                   onPressed: () => _manageCarouselDialog(commData),
                                   tooltip: 'Gerenciar carrossel',
                                 ),
                                 if (amIOwner)
                                 IconButton(
-                                  icon: const Icon(Icons.delete_forever, color: Colors.red),
+                                  icon: const Icon(Icons.delete_forever, color: AppPalette.accent),
                                   onPressed: () => _confirmAndDeleteCommunity(commData),
                                   tooltip: 'Excluir comunidade',
                                 ),
                               if (!amIOwner)
                                 IconButton(
-                                  icon: const Icon(Icons.logout, color: Colors.red),
+                                  icon: const Icon(Icons.logout, color:AppPalette.accent),
                                   tooltip: 'Sair da comunidade',
                                   onPressed: _leaveCommunity,
                                 ),
@@ -734,7 +791,7 @@ class _CommunityAdminPageState extends State<CommunityAdminPage> {
 
                     return ListView.separated(
                       itemCount: docs.length,
-                      separatorBuilder: (_, __) => Divider(color: kLight, height: 1),
+                      separatorBuilder: (_, __) => Divider(color: AppPalette.light, height: 1),
                       itemBuilder: (context, idx) {
                         final doc = docs[idx];
                         final memberId = doc.id;
@@ -753,7 +810,7 @@ class _CommunityAdminPageState extends State<CommunityAdminPage> {
                               contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
                               leading: CircleAvatar(
                                 radius: 22,
-                                backgroundColor: kLight,
+                                backgroundColor: AppPalette.light,
                                 backgroundImage: (photoUrl.isNotEmpty) ? NetworkImage(photoUrl) : null,
                                 child: (photoUrl.isEmpty)
                                     ? Text(displayName.isNotEmpty ? displayName[0] : 'U', style: const TextStyle(color: Colors.white))
@@ -766,14 +823,14 @@ class _CommunityAdminPageState extends State<CommunityAdminPage> {
                                     Container(
                                       margin: const EdgeInsets.only(left: 8),
                                       padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                                      decoration: BoxDecoration(color: kPrimary, borderRadius: BorderRadius.circular(12)),
+                                      decoration: BoxDecoration(color: AppPalette.primary, borderRadius: BorderRadius.circular(12)),
                                       child: const Text('Dono', style: TextStyle(color: Colors.white, fontSize: 12)),
                                     )
                                   else if (isAdmin)
                                     Container(
                                       margin: const EdgeInsets.only(left: 8),
                                       padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                                      decoration: BoxDecoration(color: kGreen, borderRadius: BorderRadius.circular(12)),
+                                      decoration: BoxDecoration(color: AppPalette.green, borderRadius: BorderRadius.circular(12)),
                                       child: const Text('Admin do grupo', style: TextStyle(color: Colors.white, fontSize: 12)),
                                     ),
                                 ],
@@ -827,13 +884,17 @@ class _CommunityAdminPageState extends State<CommunityAdminPage> {
                   icon: const Icon(Icons.logout, color: Colors.white),
                   label: const Text('Sair da comunidade'),
                   style: ElevatedButton.styleFrom(
-                    backgroundColor: Colors.redAccent,
+                    backgroundColor: AppPalette.accent,
                     foregroundColor: Colors.white,
                   ),
                   onPressed: _leaveCommunity,
                 ),
               ),
-              if (_loadingAction) const LinearProgressIndicator(),
+              if (_loadingAction)
+              const LinearProgressIndicator(
+                color: AppPalette.primary,
+                backgroundColor: AppPalette.light,
+              ),
             ],
           );
         },

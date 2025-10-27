@@ -1,6 +1,8 @@
 // chat_page_with_videos.dart
 import 'dart:io';
 import 'dart:typed_data';
+import 'package:athlo_app_novo/shared/theme.dart'; 
+import 'package:athlo_app_novo/widgets/app_dialogs.dart';
 
 import 'community_admin_page.dart';
 import 'package:cached_network_image/cached_network_image.dart';
@@ -610,6 +612,30 @@ Future<void> _enviarMensagem({
   }) {
     final maxWidth = MediaQuery.of(context).size.width * 0.72;
 
+    if (senderId == 'system') {
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 6.0),
+      child: Center(
+        child: Container(
+          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+          decoration: BoxDecoration(
+            color: Colors.black,
+            borderRadius: BorderRadius.circular(10),
+          ),
+          child: Text(
+            text ?? '',
+            style: const TextStyle(
+              color: Colors.white,
+              fontStyle: FontStyle.italic,
+              fontSize: 14,
+            ),
+            textAlign: TextAlign.center,
+          ),
+        ),
+      ),
+    );
+  }
+
     final bubble = ConstrainedBox(
       constraints: BoxConstraints(maxWidth: maxWidth),
       child: Container(
@@ -825,38 +851,71 @@ Future<void> _enviarMensagem({
     },
   ),
 
-  // 🔹 Botão "Sair" (somente para membros comuns)
-  actions: [
-    StreamBuilder<DocumentSnapshot>(
-      stream: FirebaseFirestore.instance
-          .collection('communities')
-          .doc(widget.communityId)
-          .snapshots(),
-      builder: (context, snap) {
-        if (!snap.hasData || !snap.data!.exists) {
-          return const SizedBox.shrink();
-        }
+  // substitua o bloco actions atual por este
+actions: [
+  StreamBuilder<DocumentSnapshot>(
+    stream: FirebaseFirestore.instance
+        .collection('communities')
+        .doc(widget.communityId)
+        .snapshots(),
+    builder: (context, snap) {
+      if (!snap.hasData || !snap.data!.exists) {
+        return const SizedBox.shrink();
+      }
 
-        final data = snap.data!.data() as Map<String, dynamic>? ?? {};
-        final uid = FirebaseAuth.instance.currentUser?.uid;
-        final ownerId = (data['ownerId'] ?? data['creatorId'] ?? '') as String;
-        final admins = (data['admins'] is List)
-            ? (data['admins'] as List).cast<String>()
-            : <String>[];
+      final data = snap.data!.data() as Map<String, dynamic>? ?? {};
+      final uid = FirebaseAuth.instance.currentUser?.uid;
+      final ownerId = (data['ownerId'] ?? data['creatorId'] ?? '') as String;
+      final admins = (data['admins'] is List) ? (data['admins'] as List).cast<String>() : <String>[];
 
-        // 🔹 Mostra botão "Sair" apenas se NÃO for dono nem admin
-        if (uid == null || uid == ownerId || admins.contains(uid)) {
-          return const SizedBox.shrink();
-        }
+      final amIAdmin = uid != null && (uid == ownerId || admins.contains(uid));
+      final amIOwner = uid != null && uid == ownerId;
 
-        return IconButton(
-          icon: const Icon(Icons.exit_to_app, color: Colors.white),
-          tooltip: 'Sair da comunidade',
-          onPressed: _sairDaComunidade,
-        );
-      },
-    ),
-  ],
+      // botão admin (só para admin/dono)
+      final adminButton = amIAdmin
+          ? IconButton(
+              icon: const Icon(Icons.settings, color: Colors.white),
+              tooltip: 'Painel administrativo',
+              onPressed: () {
+                Navigator.push(
+                  context,
+                  MaterialPageRoute(
+                    builder: (_) => CommunityAdminPage(
+                      communityId: widget.communityId,
+                      communityName: widget.nomeComunidade,
+                    ),
+                  ),
+                );
+              },
+            )
+          : const SizedBox.shrink();
+
+      // botão sair: mostrar para todos exceto o dono (IMPORTANTE: não verifica admins aqui)
+      final leaveButton = (!amIOwner && uid != null)
+          ? IconButton(
+              icon: const Icon(Icons.exit_to_app, color: Colors.white),
+              tooltip: 'Sair da comunidade',
+              onPressed: () async {
+                final confirmed = await AppDialogs.confirmation(
+                  context,
+                  title: 'Sair da comunidade',
+                  message: 'Tem certeza de que deseja sair desta comunidade?',
+                  confirmText: 'Sair',
+                  cancelText: 'Cancelar',
+                  confirmColor: AppPalette.accent,
+                );
+                if (confirmed == true) {
+                  // chama a função que remove o membro — garanta que ela exista e seja async
+                  await _sairDaComunidade();
+                }
+              },
+            )
+          : const SizedBox.shrink();
+
+      return Row(mainAxisSize: MainAxisSize.min, children: [adminButton, leaveButton]);
+    },
+  ),
+],
 ),
       body: Column(
         children: [
