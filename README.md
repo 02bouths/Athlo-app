@@ -7,8 +7,6 @@ O aplicativo integra recursos de rede social, geolocalização e comunicação e
 
 ---
 
-## 📱 Preview
-
 <p align="center">
   <img src="assets/images/Athlo.png" width="800" />
 </p>
